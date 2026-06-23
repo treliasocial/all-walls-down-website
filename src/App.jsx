@@ -26,7 +26,7 @@ const donationUrl =
 const imageDimensions = {
   "/assets/awd-logo.webp": { width: 1190, height: 1322 },
   "/assets/brothers-keepers.webp": { width: 962, height: 956 },
-  "/assets/core-leadership.webp": { width: 933, height: 623 },
+  "/assets/core-leadership-transparent.webp": { width: 1166, height: 1349 },
   "/assets/dok.webp": { width: 1408, height: 768 }
 };
 
@@ -60,7 +60,7 @@ const ministries = [
   {
     name: "Core Leadership",
     short: "BK Leadership",
-    image: "/assets/core-leadership.webp",
+    image: "/assets/core-leadership-transparent.webp",
     alt: "Brothers Keepers Core Leadership emblem",
     quote: "The leadership branch of Brothers Keepers.",
     body: "Guiding the mission with integrity, unity, and a heart to serve.",
@@ -130,7 +130,7 @@ const pageMetadata = {
       "Meet the servant leaders guiding All Walls Down, Brothers Keepers Core Leadership, and Daughters of the Kingdom.",
     keywords:
       "Christian ministry leadership, servant leadership ministry, Brothers Keepers leadership, Daughters of the Kingdom",
-    image: "/assets/core-leadership.webp"
+    image: "/assets/core-leadership-transparent.webp"
   },
   "/Get_Involved": {
     title: "Volunteer or Donate to a Christian Nonprofit | AWD",
@@ -625,7 +625,7 @@ function LeadershipPage({ onDonate }) {
         label="Leadership"
         title="Leading with integrity and unity."
         body="Servant leaders committed to guiding AWD, Brothers Keepers, and Daughters of the Kingdom."
-        image="/assets/core-leadership.webp"
+        image="/assets/core-leadership-transparent.webp"
         imageClass="page-hero--leadership"
       />
       <section className="leadership section">

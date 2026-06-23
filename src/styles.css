@@ -276,27 +276,54 @@ h2 { font-size: clamp(2.6rem, 5.5vw, 5.1rem); letter-spacing: -0.035em; }
 .section-heading--left { max-width: none; margin-left: 0; text-align: left; }
 .ministry-list { border-top: 1px solid var(--line); }
 .ministry {
-  min-height: 470px;
+  min-height: 620px;
   display: grid;
-  grid-template-columns: 80px 1.05fr 1fr;
-  align-items: center;
+  grid-template-columns: 64px minmax(0, 1.08fr) minmax(390px, 0.92fr);
+  align-items: stretch;
   border-bottom: 1px solid var(--line);
   position: relative;
+  overflow: hidden;
   transition: background 350ms ease;
 }
 .ministry:hover { background: linear-gradient(90deg, transparent, rgba(201,153,78,.035), transparent); }
 .ministry__number { align-self: start; padding-top: 52px; color: var(--bronze); font-family: var(--serif); font-size: 1.1rem; }
-.ministry__art { height: 400px; display: grid; place-items: center; padding: 34px; }
-.ministry__art img { max-height: 100%; width: 100%; object-fit: contain; filter: drop-shadow(0 22px 35px rgba(0, 0, 0, 0.45)); }
+.ministry__art {
+  min-width: 0;
+  min-height: 620px;
+  display: grid;
+  place-items: center;
+  padding: 54px 48px;
+  overflow: hidden;
+}
+.ministry__art img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 88%;
+  max-height: 500px;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 35px rgba(0, 0, 0, 0.45));
+}
 .ministry__art img { transition: transform 650ms cubic-bezier(.22,.75,.18,1), filter 650ms ease; }
 .ministry:hover .ministry__art img { transform: translateY(-8px) scale(1.035); filter: drop-shadow(0 30px 42px rgba(168,105,43,.25)); }
-.ministry__copy { max-width: 430px; padding: 45px 0 45px 55px; border-left: 1px solid var(--line); }
+.ministry__copy {
+  min-width: 0;
+  max-width: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  flex-direction: column;
+  padding: 64px 44px 64px 62px;
+  border-left: 1px solid var(--line);
+}
 .ministry__copy > span { color: var(--gold-light); font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; }
 .ministry__copy h2 { margin: 12px 0 16px; font-size: clamp(2.5rem, 4.3vw, 4.3rem); }
 .ministry__copy blockquote { margin: 0 0 16px; color: var(--gold-light); font-family: var(--serif); font-size: 1.22rem; font-style: italic; }
 .ministry__copy p { color: var(--muted); }
-.ministry--core .ministry__art img { max-width: 430px; border-radius: 8px; }
+.ministry--bk .ministry__art img { max-height: 530px; }
+.ministry--core .ministry__art img { max-width: 72%; max-height: 500px; }
 .ministry--dok .ministry__art { background: radial-gradient(circle, rgba(106, 51, 77, 0.2), transparent 64%); }
+.ministry--dok .ministry__art img { max-width: 82%; max-height: 430px; }
 
 .leadership {
   background:
@@ -437,9 +464,14 @@ footer { border-top: 1px solid var(--line); background: #090908; }
   .split-feature { grid-template-columns: 0.65fr 1.35fr; gap: 55px; }
   .page-hero__mark { right: -9vw; opacity: 0.42 !important; }
   .about-story__grid { grid-template-columns: 1fr; }
-  .ministry { grid-template-columns: 55% 45%; }
+  .ministry {
+    min-height: 560px;
+    grid-template-columns: minmax(0, 52%) minmax(0, 48%);
+  }
   .ministry__number { display: none; }
-  .ministry__copy { padding-right: 25px; }
+  .ministry__art { min-height: 560px; padding: 42px 28px; }
+  .ministry__art img { max-width: 88%; max-height: 450px; }
+  .ministry__copy { padding: 50px 28px 50px 42px; }
   .roster { grid-template-columns: repeat(3, 1fr); }
   .roster div:nth-child(4n) { border-right: 1px solid var(--line); }
   .roster div:nth-child(3n) { border-right: 0; }
@@ -482,8 +514,11 @@ footer { border-top: 1px solid var(--line); background: #090908; }
   .founders-section__grid { grid-template-columns: 1fr; gap: 25px; }
   .founders-section__mark img { height: 150px; margin-left: 0; }
   .section-heading { margin-bottom: 48px; text-align: left; }
-  .ministry { grid-template-columns: 1fr; padding: 22px 0 42px; }
-  .ministry__art { height: 330px; padding: 16px; }
+  .ministry { min-height: 0; grid-template-columns: 1fr; padding: 22px 0 42px; overflow: visible; }
+  .ministry__art { min-height: 330px; height: 330px; padding: 18px; }
+  .ministry__art img { max-width: 92%; max-height: 300px; }
+  .ministry--core .ministry__art img { max-width: 66%; max-height: 300px; }
+  .ministry--dok .ministry__art img { max-width: 78%; max-height: 280px; }
   .ministry__copy { max-width: none; padding: 35px 4px 0; border-left: 0; border-top: 1px solid var(--line); }
   .ministry__copy .button { width: 100%; }
   .director strong { font-size: 1.65rem; }
