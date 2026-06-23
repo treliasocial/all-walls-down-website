@@ -32,3 +32,9 @@ with a direct-link fallback.
 
 The project includes SPA rewrites for direct URL navigation on Vercel and
 Netlify-compatible hosts.
+
+## Production SEO configuration
+
+Copy `.env.example` to `.env` and set `VITE_SITE_URL` to the final public
+domain before the production build. This sets absolute canonical URLs and
+generates `sitemap.xml` plus the sitemap declaration in `robots.txt`.

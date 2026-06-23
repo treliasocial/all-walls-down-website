@@ -19,8 +19,16 @@ import {
   useLocation
 } from "react-router-dom";
 
+const organizationName = "AWD — All Walls Down";
+const configuredSiteUrl = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
 const donationUrl =
   "https://www.zeffy.com/en-US/donation-form/donate-to-change-lives-14931";
+const imageDimensions = {
+  "/assets/awd-logo.webp": { width: 1190, height: 1322 },
+  "/assets/brothers-keepers.webp": { width: 962, height: 956 },
+  "/assets/core-leadership.webp": { width: 933, height: 623 },
+  "/assets/dok.webp": { width: 1408, height: 768 }
+};
 
 const leaders = [
   "Levell Cheathem",
@@ -41,7 +49,7 @@ const ministries = [
   {
     name: "Brothers Keepers",
     short: "BK",
-    image: "/assets/brothers-keepers.png",
+    image: "/assets/brothers-keepers.webp",
     alt: "Brothers Keepers iron sharpens iron emblem",
     quote: "Iron sharpens iron.",
     body: "A brotherhood committed to faith, accountability, strength, and service.",
@@ -52,7 +60,7 @@ const ministries = [
   {
     name: "Core Leadership",
     short: "BK Leadership",
-    image: "/assets/core-leadership.png",
+    image: "/assets/core-leadership.webp",
     alt: "Brothers Keepers Core Leadership emblem",
     quote: "The leadership branch of Brothers Keepers.",
     body: "Guiding the mission with integrity, unity, and a heart to serve.",
@@ -63,7 +71,7 @@ const ministries = [
   {
     name: "Daughters of the Kingdom",
     short: "DOK",
-    image: "/assets/dok.png",
+    image: "/assets/dok.webp",
     alt: "Daughters of the Kingdom crown and cross emblem",
     quote: "Founder / Director — Kim Cheathem",
     body: "Women walking boldly in faith, identity, purpose, and calling.",
@@ -93,29 +101,44 @@ const ways = [
 
 const pageMetadata = {
   "/": {
-    title: "All Walls Down | Breaking Every Barrier",
+    title: "Christian Nonprofit Ministry | All Walls Down",
     description:
-      "All Walls Down brings the focus back to Christ and breaks every barrier that seeks to separate us."
+      "All Walls Down is a Christian nonprofit ministry advancing faith, unity, community outreach, men's ministry, and women's ministry.",
+    keywords:
+      "Christian nonprofit organization, faith based nonprofit, Christian community outreach, Christian ministry, donate to Christian nonprofit",
+    image: "/assets/hero-barrier.webp"
   },
   "/About_us": {
-    title: "About Us | All Walls Down",
+    title: "About Our Christian Nonprofit | All Walls Down",
     description:
-      "Learn about the vision, mission, and founders of AWD — All Walls Down."
+      "Meet All Walls Down, a Christian nonprofit organization founded by Monta and Kim Cheathem to break barriers through faith and service.",
+    keywords:
+      "Christian nonprofit organization, faith based community organization, Christian community service, All Walls Down founders",
+    image: "/assets/awd-logo.webp"
   },
   "/Ministries": {
-    title: "Our Ministries | All Walls Down",
+    title: "Christian Men's & Women's Ministries | AWD",
     description:
-      "Meet Brothers Keepers, Brothers Keepers Core Leadership, and Daughters of the Kingdom."
+      "Explore Brothers Keepers Christian men's ministry, Core Leadership, and Daughters of the Kingdom Christian women's ministry.",
+    keywords:
+      "Christian men's ministry, Christian women's ministry, men's discipleship, women's discipleship, iron sharpens iron ministry",
+    image: "/assets/brothers-keepers.webp"
   },
   "/Leadership": {
-    title: "Leadership | All Walls Down",
+    title: "Christian Ministry Leadership | All Walls Down",
     description:
-      "Meet the Brothers Keepers Core Leadership Directors and Daughters of the Kingdom leadership."
+      "Meet the servant leaders guiding All Walls Down, Brothers Keepers Core Leadership, and Daughters of the Kingdom.",
+    keywords:
+      "Christian ministry leadership, servant leadership ministry, Brothers Keepers leadership, Daughters of the Kingdom",
+    image: "/assets/core-leadership.webp"
   },
   "/Get_Involved": {
-    title: "Get Involved | All Walls Down",
+    title: "Volunteer or Donate to a Christian Nonprofit | AWD",
     description:
-      "Pray, partner, serve, or give to help All Walls Down be the hands and feet of Christ."
+      "Pray, volunteer, partner, or donate to All Walls Down and help a Christian nonprofit serve communities and break barriers.",
+    keywords:
+      "volunteer with Christian nonprofit, donate to Christian nonprofit, faith based volunteer opportunities, Christian community outreach",
+    image: "/assets/awd-logo.webp"
   }
 };
 
@@ -129,14 +152,159 @@ function ScrollToTop() {
   return null;
 }
 
+function MotionEffects() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const selectors = [
+      ".home-mission__grid > *",
+      ".split-feature > *",
+      ".about-story__grid > *",
+      ".founders-section__grid > *",
+      ".ministry",
+      ".section-heading",
+      ".director",
+      ".roster > div",
+      ".dok-director",
+      ".ways article",
+      ".involved-statement",
+      ".giving-callout .shell > *",
+      ".footer__grid > *"
+    ].join(",");
+    const elements = [...document.querySelectorAll(selectors)];
+
+    elements.forEach((element, index) => {
+      element.classList.add("reveal");
+      element.style.setProperty("--reveal-order", String(index % 6));
+    });
+
+    if (reducedMotion) {
+      elements.forEach((element) => element.classList.add("is-visible"));
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
+    );
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [pathname]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) return undefined;
+    let frame = 0;
+    const handlePointer = (event) => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        document.documentElement.style.setProperty("--pointer-x", `${event.clientX}px`);
+        document.documentElement.style.setProperty("--pointer-y", `${event.clientY}px`);
+      });
+    };
+    window.addEventListener("pointermove", handlePointer, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", handlePointer);
+    };
+  }, []);
+
+  return <div className="cursor-light" aria-hidden="true" />;
+}
+
+function setMeta(selector, attribute, value) {
+  let element = document.head.querySelector(selector);
+  if (!element) {
+    element = document.createElement("meta");
+    const [name, property] = selector.includes("property=")
+      ? [null, selector.match(/property="([^"]+)"/)?.[1]]
+      : [selector.match(/name="([^"]+)"/)?.[1], null];
+    if (name) element.setAttribute("name", name);
+    if (property) element.setAttribute("property", property);
+    document.head.appendChild(element);
+  }
+  element.setAttribute(attribute, value);
+}
+
 function PageMetadata() {
   const { pathname } = useLocation();
 
   useEffect(() => {
     const metadata = pageMetadata[pathname] ?? pageMetadata["/"];
+    const siteUrl = configuredSiteUrl || window.location.origin;
+    const canonicalUrl = `${siteUrl}${pathname === "/" ? "/" : pathname}`;
+    const imageUrl = new URL(metadata.image, siteUrl).href;
     document.title = metadata.title;
-    const description = document.querySelector('meta[name="description"]');
-    description?.setAttribute("content", metadata.description);
+    setMeta('meta[name="description"]', "content", metadata.description);
+    setMeta('meta[property="og:title"]', "content", metadata.title);
+    setMeta('meta[property="og:description"]', "content", metadata.description);
+    setMeta('meta[property="og:url"]', "content", canonicalUrl);
+    setMeta('meta[property="og:image"]', "content", imageUrl);
+    setMeta('meta[name="twitter:title"]', "content", metadata.title);
+    setMeta('meta[name="twitter:description"]', "content", metadata.description);
+    setMeta('meta[name="twitter:image"]', "content", imageUrl);
+
+    let canonical = document.head.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", canonicalUrl);
+
+    const schema = {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": `${siteUrl}/#organization`,
+          name: organizationName,
+          alternateName: "All Walls Down",
+          url: `${siteUrl}/`,
+          logo: `${siteUrl}/assets/awd-logo.webp`,
+          image: `${siteUrl}/assets/hero-barrier.webp`,
+          slogan: "Breaking Every Barrier!",
+          description: pageMetadata["/"].description,
+          founder: [
+            { "@type": "Person", name: "Monta Cheathem" },
+            { "@type": "Person", name: "Kim Cheathem" }
+          ],
+        },
+        {
+          "@type": "WebPage",
+          "@id": `${canonicalUrl}#webpage`,
+          url: canonicalUrl,
+          name: metadata.title,
+          description: metadata.description,
+          isPartOf: { "@id": `${siteUrl}/#website` },
+          about: { "@id": `${siteUrl}/#organization` },
+          primaryImageOfPage: { "@type": "ImageObject", url: imageUrl }
+        },
+        {
+          "@type": "WebSite",
+          "@id": `${siteUrl}/#website`,
+          url: `${siteUrl}/`,
+          name: organizationName,
+          publisher: { "@id": `${siteUrl}/#organization` }
+        }
+      ]
+    };
+    let script = document.head.querySelector('script[data-awd-schema="true"]');
+    if (!script) {
+      script = document.createElement("script");
+      script.type = "application/ld+json";
+      script.dataset.awdSchema = "true";
+      document.head.appendChild(script);
+    }
+    script.textContent = JSON.stringify(schema);
   }, [pathname]);
 
   return null;
@@ -175,7 +343,14 @@ function Header({ onDonate }) {
   return (
     <header className="site-header">
       <NavLink className="brand" to="/" aria-label="All Walls Down home" onClick={closeMenu}>
-        <img src="/assets/awd-logo.png" alt="" />
+        <img
+          src="/assets/awd-logo.webp"
+          alt=""
+          width="1190"
+          height="1322"
+          decoding="async"
+          fetchPriority="high"
+        />
         <span>AWD <i /> All Walls Down</span>
       </NavLink>
       <button
@@ -214,11 +389,20 @@ function Header({ onDonate }) {
 }
 
 function PageHero({ label, title, body, image, imageClass = "" }) {
+  const dimensions = imageDimensions[image];
+
   return (
     <section className={`page-hero ${imageClass}`}>
       {image ? (
         <div className="page-hero__mark" aria-hidden="true">
-          <img src={image} alt="" />
+          <img
+            src={image}
+            alt=""
+            width={dimensions?.width}
+            height={dimensions?.height}
+            decoding="async"
+            fetchPriority="high"
+          />
         </div>
       ) : null}
       <div className="shell page-hero__content">
@@ -269,7 +453,14 @@ function HomePage({ onDonate }) {
           <div className="home-marks" aria-label="All Walls Down ministries">
             {ministries.map((ministry) => (
               <NavLink to="/Ministries" key={ministry.name}>
-                <img src={ministry.image} alt="" />
+                <img
+                  src={ministry.image}
+                  alt=""
+                  width={imageDimensions[ministry.image]?.width}
+                  height={imageDimensions[ministry.image]?.height}
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span>{ministry.short}</span>
               </NavLink>
             ))}
@@ -280,7 +471,14 @@ function HomePage({ onDonate }) {
       <section className="home-intro section">
         <div className="shell split-feature">
           <div className="split-feature__art">
-            <img src="/assets/awd-logo.png" alt="" />
+            <img
+              src="/assets/awd-logo.webp"
+              alt=""
+              width="1190"
+              height="1322"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
           <div>
             <p className="section-label">Who We Are</p>
@@ -310,7 +508,7 @@ function AboutPage({ onDonate }) {
         label="About AWD"
         title="Faith is more than religion."
         body="It is about a relationship between a person and God—and a Truth that belongs in the heart of the people."
-        image="/assets/awd-logo.png"
+        image="/assets/awd-logo.webp"
         imageClass="page-hero--about"
       />
       <section className="about-story section">
@@ -349,7 +547,14 @@ function AboutPage({ onDonate }) {
       <section className="founders-section">
         <div className="shell founders-section__grid">
           <div className="founders-section__mark">
-            <img src="/assets/awd-logo.png" alt="" />
+            <img
+              src="/assets/awd-logo.webp"
+              alt=""
+              width="1190"
+              height="1322"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
           <div>
             <p className="section-label">Founders of All Walls Down</p>
@@ -374,7 +579,7 @@ function MinistriesPage({ onDonate }) {
         label="Our Ministries"
         title="Three ministries. One mission."
         body="Distinct communities, united in Christ and committed to breaking every barrier."
-        image="/assets/brothers-keepers.png"
+        image="/assets/brothers-keepers.webp"
         imageClass="page-hero--ministries"
       />
       <section className="ministries section">
@@ -384,7 +589,14 @@ function MinistriesPage({ onDonate }) {
               <article className={`ministry ${ministry.className}`} key={ministry.name}>
                 <div className="ministry__number">0{index + 1}</div>
                 <div className="ministry__art">
-                  <img src={ministry.image} alt={ministry.alt} />
+                  <img
+                    src={ministry.image}
+                    alt={ministry.alt}
+                    width={imageDimensions[ministry.image]?.width}
+                    height={imageDimensions[ministry.image]?.height}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </div>
                 <div className="ministry__copy">
                   <span>{ministry.short}</span>
@@ -413,7 +625,7 @@ function LeadershipPage({ onDonate }) {
         label="Leadership"
         title="Leading with integrity and unity."
         body="Servant leaders committed to guiding AWD, Brothers Keepers, and Daughters of the Kingdom."
-        image="/assets/core-leadership.png"
+        image="/assets/core-leadership.webp"
         imageClass="page-hero--leadership"
       />
       <section className="leadership section">
@@ -423,7 +635,14 @@ function LeadershipPage({ onDonate }) {
             <h2>Core Leadership Directors</h2>
           </div>
           <div className="director">
-            <img src="/assets/brothers-keepers.png" alt="" />
+            <img
+              src="/assets/brothers-keepers.webp"
+              alt=""
+              width="962"
+              height="956"
+              loading="lazy"
+              decoding="async"
+            />
             <div>
               <span>Founder / Director</span>
               <strong>Monta (Ta&apos;) Cheathem</strong>
@@ -433,7 +652,14 @@ function LeadershipPage({ onDonate }) {
             {leaders.map((leader) => <div key={leader}>{leader}</div>)}
           </div>
           <div className="dok-director">
-            <img src="/assets/dok.png" alt="" />
+            <img
+              src="/assets/dok.webp"
+              alt=""
+              width="1408"
+              height="768"
+              loading="lazy"
+              decoding="async"
+            />
             <div>
               <span>Daughters of the Kingdom</span>
               <h3>Founder / Director</h3>
@@ -455,7 +681,7 @@ function GetInvolvedPage({ onDonate }) {
         label="Get Involved"
         title="Be the hands and feet for Christ."
         body="There is a place for you in the work of breaking every barrier."
-        image="/assets/awd-logo.png"
+        image="/assets/awd-logo.webp"
         imageClass="page-hero--involved"
       />
       <section className="get-involved section">
@@ -485,7 +711,14 @@ function GetInvolvedPage({ onDonate }) {
             </article>
           </div>
           <div className="involved-statement">
-            <img src="/assets/awd-logo.png" alt="" />
+            <img
+              src="/assets/awd-logo.webp"
+              alt=""
+              width="1190"
+              height="1322"
+              loading="lazy"
+              decoding="async"
+            />
             <blockquote>
               “Our mission is simple: to be the hands and feet for Christ.”
               <cite>AWD — All Walls Down</cite>
@@ -517,7 +750,14 @@ function Footer({ onDonate }) {
     <footer>
       <div className="shell footer__grid">
         <div className="footer__brand">
-          <img src="/assets/awd-logo.png" alt="All Walls Down" />
+          <img
+            src="/assets/awd-logo.webp"
+            alt="All Walls Down"
+            width="1190"
+            height="1322"
+            loading="lazy"
+            decoding="async"
+          />
           <strong>AWD — All Walls Down</strong>
           <em>Breaking Every Barrier!</em>
         </div>
@@ -600,6 +840,7 @@ function DonationModal({ open, onClose }) {
 }
 
 function Site() {
+  const { pathname } = useLocation();
   const [donationOpen, setDonationOpen] = useState(false);
   const openDonation = () => setDonationOpen(true);
   const closeDonation = () => setDonationOpen(false);
@@ -608,8 +849,10 @@ function Site() {
     <>
       <ScrollToTop />
       <PageMetadata />
+      <MotionEffects />
+      <div className="scroll-progress" aria-hidden="true" />
       <Header onDonate={openDonation} />
-      <main>
+      <main className="route-stage" key={pathname}>
         <Routes>
           <Route path="/" element={<HomePage onDonate={openDonation} />} />
           <Route path="/About_us" element={<AboutPage onDonate={openDonation} />} />
