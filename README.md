@@ -21,3 +21,14 @@ npm run dev
 
 Donation buttons open the official AWD Zeffy donation form in an embedded modal,
 with a direct-link fallback.
+
+## Public routes
+
+- `/` — Home
+- `/About_us` — About AWD, mission, vision, and founders
+- `/Ministries` — Brothers Keepers, Core Leadership, and Daughters of the Kingdom
+- `/Leadership` — AWD ministry leadership
+- `/Get_Involved` — Prayer, partnership, service, and giving
+
+The project includes SPA rewrites for direct URL navigation on Vercel and
+Netlify-compatible hosts.
