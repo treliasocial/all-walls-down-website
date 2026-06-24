@@ -22,12 +22,12 @@ import {
 const organizationName = "AWD — All Walls Down Organization";
 const configuredSiteUrl = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
 const donationUrl =
-  "https://www.zeffy.com/en-US/donation-form/donate-to-change-lives-14931";
+  "https://www.zeffy.com/en-US/donation-form/awdo-donate-to-change-lives";
 const imageDimensions = {
   "/assets/awd-logo.webp": { width: 1190, height: 1322 },
   "/assets/brothers-keepers.webp": { width: 962, height: 956 },
   "/assets/core-leadership-transparent.webp": { width: 1166, height: 1349 },
-  "/assets/dok-transparent.png": { width: 1408, height: 768 },
+  "/assets/dok-clean.png": { width: 626, height: 712 },
 };
 
 const leaders = [
@@ -48,7 +48,7 @@ const leaders = [
 const ministries = [
   {
     name: "Brothers Keepers",
-    short: "BK",
+    short: "Brothers Keepers",
     image: "/assets/brothers-keepers.webp",
     alt: "Brothers Keepers iron sharpens iron emblem",
     quote: "Iron sharpens iron.",
@@ -69,8 +69,8 @@ const ministries = [
   },
   {
     name: "Daughters of the King",
-    short: "DOK",
-    image: "/assets/dok-transparent.png",
+    short: "Daughters of the King",
+    image: "/assets/dok-clean.png",
     alt: "Daughters of the King crown and cross emblem",
     quote: "Founder / Director — Kim Cheathem",
     body: "Women walking boldly in faith, identity, purpose, and calling.",
@@ -97,6 +97,30 @@ const ways = [
     body: "Use your time and talents to be the hands and feet of Christ.",
   },
 ];
+
+const emberParticles = Array.from({ length: 36 }, (_, index) => ({
+  "--particle-x": `${8 + ((index * 19) % 86)}%`,
+  "--particle-size": `${3 + (index % 4)}px`,
+  "--particle-speed": `${4.6 + (index % 7) * 0.42}s`,
+  "--particle-delay": `${-1 * ((index * 0.47) % 5.8).toFixed(2)}s`,
+  "--particle-drift": `${index % 2 === 0 ? "" : "-"}${12 + (index % 5) * 7}px`,
+}));
+
+const royalParticles = Array.from({ length: 28 }, (_, index) => ({
+  "--particle-x": `${7 + ((index * 23) % 88)}%`,
+  "--particle-y": `${18 + ((index * 17) % 64)}%`,
+  "--particle-size": `${2 + (index % 3)}px`,
+  "--particle-speed": `${5.4 + (index % 6) * 0.5}s`,
+  "--particle-delay": `${-1 * ((index * 0.61) % 6.4).toFixed(2)}s`,
+}));
+
+const heroParticles = Array.from({ length: 24 }, (_, index) => ({
+  "--particle-x": `${42 + ((index * 11) % 58)}%`,
+  "--particle-y": `${8 + ((index * 13) % 78)}%`,
+  "--particle-size": `${2 + (index % 3)}px`,
+  "--particle-speed": `${7 + (index % 5) * 0.7}s`,
+  "--particle-delay": `${-1 * ((index * 0.53) % 7).toFixed(2)}s`,
+}));
 
 const pageMetadata = {
   "/": {
@@ -374,10 +398,11 @@ function Header({ onDonate }) {
           width="1190"
           height="1322"
           decoding="async"
-          fetchPriority="high"
+          fetchpriority="high"
         />
-        <span>
-          AWD <i /> All Walls Down Organization
+        <span className="brand__text">
+          <span className="brand__line">All Walls Down</span>
+          <span className="brand__org">Organization</span>
         </span>
       </NavLink>
       <button
@@ -431,7 +456,7 @@ function PageHero({ label, title, body, image, imageClass = "" }) {
             width={dimensions?.width}
             height={dimensions?.height}
             decoding="async"
-            fetchPriority="high"
+            fetchpriority="high"
           />
         </div>
       ) : null}
@@ -450,6 +475,11 @@ function HomePage({ onDonate }) {
     <>
       <section className="hero">
         <div className="hero__image" aria-hidden="true" />
+        <div className="hero__atmosphere" aria-hidden="true">
+          {heroParticles.map((style, index) => (
+            <span key={index} style={style} />
+          ))}
+        </div>
         <div className="hero__content shell">
           <h1>
             Breaking
@@ -488,7 +518,40 @@ function HomePage({ onDonate }) {
           </p>
           <div className="home-marks" aria-label="All Walls Down ministries">
             {ministries.map((ministry) => (
-              <NavLink to="/Ministries" key={ministry.name}>
+              <NavLink
+                className={ministry.className}
+                to="/Ministries"
+                key={ministry.name}
+              >
+                <span className="home-mark__art" aria-hidden="true">
+                  {ministry.className === "ministry--bk" ? (
+                    <>
+                      <span className="ember-field ember-field--home ember-field--back">
+                        {emberParticles.slice(0, 18).map((style, emberIndex) => (
+                          <i key={emberIndex} style={style} />
+                        ))}
+                      </span>
+                      <span className="ember-field ember-field--home ember-field--front">
+                        {emberParticles.slice(18).map((style, emberIndex) => (
+                          <i key={emberIndex} style={style} />
+                        ))}
+                      </span>
+                    </>
+                  ) : null}
+                  {ministry.className === "ministry--dok" ? (
+                    <>
+                      <span className="royal-field royal-field--home royal-field--back">
+                        {royalParticles.slice(0, 14).map((style, particleIndex) => (
+                          <i key={particleIndex} style={style} />
+                        ))}
+                      </span>
+                      <span className="royal-field royal-field--home royal-field--front">
+                        {royalParticles.slice(14).map((style, particleIndex) => (
+                          <i key={particleIndex} style={style} />
+                        ))}
+                      </span>
+                    </>
+                  ) : null}
                 <img
                   src={ministry.image}
                   alt=""
@@ -497,7 +560,8 @@ function HomePage({ onDonate }) {
                   loading="lazy"
                   decoding="async"
                 />
-                <span>{ministry.short}</span>
+                </span>
+                <span>{ministry.name}</span>
               </NavLink>
             ))}
           </div>
@@ -634,6 +698,34 @@ function MinistriesPage({ onDonate }) {
               >
                 <div className="ministry__number">0{index + 1}</div>
                 <div className="ministry__art">
+                  {ministry.className === "ministry--bk" ? (
+                    <>
+                      <div className="ember-field ember-field--back" aria-hidden="true">
+                        {emberParticles.slice(0, 18).map((style, emberIndex) => (
+                          <span key={emberIndex} style={style} />
+                        ))}
+                      </div>
+                      <div className="ember-field ember-field--front" aria-hidden="true">
+                        {emberParticles.slice(18).map((style, emberIndex) => (
+                          <span key={emberIndex} style={style} />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {ministry.className === "ministry--dok" ? (
+                    <>
+                      <div className="royal-field royal-field--back" aria-hidden="true">
+                        {royalParticles.slice(0, 14).map((style, particleIndex) => (
+                          <span key={particleIndex} style={style} />
+                        ))}
+                      </div>
+                      <div className="royal-field royal-field--front" aria-hidden="true">
+                        {royalParticles.slice(14).map((style, particleIndex) => (
+                          <span key={particleIndex} style={style} />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                   <img
                     src={ministry.image}
                     alt={ministry.alt}
@@ -712,10 +804,10 @@ function LeadershipPage({ onDonate }) {
           </div>
           <div className="dok-director">
             <img
-              src="/assets/dok-transparent.png"
+              src="/assets/dok-clean.png"
               alt=""
-              width="1408"
-              height="768"
+              width="626"
+              height="712"
               loading="lazy"
               decoding="async"
             />
