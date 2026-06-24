@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-  X
+  X,
 } from "lucide-react";
 import {
   BrowserRouter,
@@ -16,10 +16,10 @@ import {
   NavLink,
   Route,
   Routes,
-  useLocation
+  useLocation,
 } from "react-router-dom";
 
-const organizationName = "AWD — All Walls Down";
+const organizationName = "AWD — All Walls Down Organization";
 const configuredSiteUrl = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
 const donationUrl =
   "https://www.zeffy.com/en-US/donation-form/donate-to-change-lives-14931";
@@ -27,7 +27,7 @@ const imageDimensions = {
   "/assets/awd-logo.webp": { width: 1190, height: 1322 },
   "/assets/brothers-keepers.webp": { width: 962, height: 956 },
   "/assets/core-leadership-transparent.webp": { width: 1166, height: 1349 },
-  "/assets/dok.webp": { width: 1408, height: 768 }
+  "/assets/dok-transparent.png": { width: 1408, height: 768 },
 };
 
 const leaders = [
@@ -42,7 +42,7 @@ const leaders = [
   "Mon Lorenzo",
   "Bobby Lowe",
   "Andrew Kirkland",
-  "Mike Best"
+  "Mike Best",
 ];
 
 const ministries = [
@@ -55,48 +55,47 @@ const ministries = [
     body: "A brotherhood committed to faith, accountability, strength, and service.",
     detail:
       "Brothers Keepers calls men to sharpen one another, grow in Christ, build strong character, and live as faithful examples in their homes and communities.",
-    className: "ministry--bk"
+    scripture: {
+      reference: "Ecclesiastes 4:9-12",
+      translation: "New Living Translation",
+      verses: [
+        "9 Two people are better off than one, for they can help each other succeed.",
+        "10 If one person falls, the other can reach out and help. But someone who falls alone is in real trouble.",
+        "11 Likewise, two people lying close together can keep each other warm. But how can one be warm alone?",
+        "12 A person standing alone can be attacked and defeated, but two can stand back-to-back and conquer. Three are even better, for a triple-braided cord is not easily broken.",
+      ],
+    },
+    className: "ministry--bk",
   },
   {
-    name: "Core Leadership",
-    short: "BK Leadership",
-    image: "/assets/core-leadership-transparent.webp",
-    alt: "Brothers Keepers Core Leadership emblem",
-    quote: "The leadership branch of Brothers Keepers.",
-    body: "Guiding the mission with integrity, unity, and a heart to serve.",
-    detail:
-      "Core Leadership is the same branch as Brothers Keepers, equipping its directors to lead with integrity and build a legacy that impacts generations.",
-    className: "ministry--core"
-  },
-  {
-    name: "Daughters of the Kingdom",
+    name: "Daughters of the King",
     short: "DOK",
-    image: "/assets/dok.webp",
-    alt: "Daughters of the Kingdom crown and cross emblem",
+    image: "/assets/dok-transparent.png",
+    alt: "Daughters of the King crown and cross emblem",
     quote: "Founder / Director — Kim Cheathem",
     body: "Women walking boldly in faith, identity, purpose, and calling.",
     detail:
-      "Daughters of the Kingdom creates space for women to know their God-given identity, encourage one another, and answer their calling with confidence.",
-    className: "ministry--dok"
-  }
+      "Daughters of the King creates space for women to know their God-given identity, encourage one another, and answer their calling with confidence.",
+    className: "ministry--dok",
+  },
 ];
 
 const ways = [
   {
     icon: HandHeart,
     title: "Pray With Us",
-    body: "Lift our mission, leaders, families, and community in prayer."
+    body: "Lift our mission, leaders, families, and community in prayer.",
   },
   {
     icon: Handshake,
     title: "Partner With Us",
-    body: "Stand with AWD as we serve people and break barriers together."
+    body: "Stand with AWD as we serve people and break barriers together.",
   },
   {
     icon: Users,
     title: "Serve With Us",
-    body: "Use your time and talents to be the hands and feet of Christ."
-  }
+    body: "Use your time and talents to be the hands and feet of Christ.",
+  },
 ];
 
 const pageMetadata = {
@@ -106,7 +105,7 @@ const pageMetadata = {
       "All Walls Down is a Christian nonprofit ministry advancing faith, unity, community outreach, men's ministry, and women's ministry.",
     keywords:
       "Christian nonprofit organization, faith based nonprofit, Christian community outreach, Christian ministry, donate to Christian nonprofit",
-    image: "/assets/hero-barrier.webp"
+    image: "/assets/hero-barrier.webp",
   },
   "/About_us": {
     title: "About Our Christian Nonprofit | All Walls Down",
@@ -114,23 +113,23 @@ const pageMetadata = {
       "Meet All Walls Down, a Christian nonprofit organization founded by Monta and Kim Cheathem to break barriers through faith and service.",
     keywords:
       "Christian nonprofit organization, faith based community organization, Christian community service, All Walls Down founders",
-    image: "/assets/awd-logo.webp"
+    image: "/assets/awd-logo.webp",
   },
   "/Ministries": {
     title: "Christian Men's & Women's Ministries | AWD",
     description:
-      "Explore Brothers Keepers Christian men's ministry, Core Leadership, and Daughters of the Kingdom Christian women's ministry.",
+      "Explore Brothers Keepers Christian men's ministry and Daughters of the King Christian women's ministry.",
     keywords:
       "Christian men's ministry, Christian women's ministry, men's discipleship, women's discipleship, iron sharpens iron ministry",
-    image: "/assets/brothers-keepers.webp"
+    image: "/assets/brothers-keepers.webp",
   },
   "/Leadership": {
     title: "Christian Ministry Leadership | All Walls Down",
     description:
-      "Meet the servant leaders guiding All Walls Down, Brothers Keepers Core Leadership, and Daughters of the Kingdom.",
+      "Meet the servant leaders guiding All Walls Down Organization, Brothers Keepers Core Leadership, and Daughters of the King.",
     keywords:
-      "Christian ministry leadership, servant leadership ministry, Brothers Keepers leadership, Daughters of the Kingdom",
-    image: "/assets/core-leadership-transparent.webp"
+      "Christian ministry leadership, servant leadership ministry, Brothers Keepers leadership, Daughters of the King",
+    image: "/assets/core-leadership-transparent.webp",
   },
   "/Get_Involved": {
     title: "Volunteer or Donate to a Christian Nonprofit | AWD",
@@ -138,8 +137,8 @@ const pageMetadata = {
       "Pray, volunteer, partner, or donate to All Walls Down and help a Christian nonprofit serve communities and break barriers.",
     keywords:
       "volunteer with Christian nonprofit, donate to Christian nonprofit, faith based volunteer opportunities, Christian community outreach",
-    image: "/assets/awd-logo.webp"
-  }
+    image: "/assets/awd-logo.webp",
+  },
 };
 
 function ScrollToTop() {
@@ -156,7 +155,9 @@ function MotionEffects() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     const selectors = [
       ".home-mission__grid > *",
       ".split-feature > *",
@@ -170,7 +171,7 @@ function MotionEffects() {
       ".ways article",
       ".involved-statement",
       ".giving-callout .shell > *",
-      ".footer__grid > *"
+      ".footer__grid > *",
     ].join(",");
     const elements = [...document.querySelectorAll(selectors)];
 
@@ -193,21 +194,29 @@ function MotionEffects() {
           }
         });
       },
-      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
+      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
     );
     elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, [pathname]);
 
   useEffect(() => {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     if (reducedMotion) return undefined;
     let frame = 0;
     const handlePointer = (event) => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        document.documentElement.style.setProperty("--pointer-x", `${event.clientX}px`);
-        document.documentElement.style.setProperty("--pointer-y", `${event.clientY}px`);
+        document.documentElement.style.setProperty(
+          "--pointer-x",
+          `${event.clientX}px`,
+        );
+        document.documentElement.style.setProperty(
+          "--pointer-y",
+          `${event.clientY}px`,
+        );
       });
     };
     window.addEventListener("pointermove", handlePointer, { passive: true });
@@ -249,7 +258,11 @@ function PageMetadata() {
     setMeta('meta[property="og:url"]', "content", canonicalUrl);
     setMeta('meta[property="og:image"]', "content", imageUrl);
     setMeta('meta[name="twitter:title"]', "content", metadata.title);
-    setMeta('meta[name="twitter:description"]', "content", metadata.description);
+    setMeta(
+      'meta[name="twitter:description"]',
+      "content",
+      metadata.description,
+    );
     setMeta('meta[name="twitter:image"]', "content", imageUrl);
 
     let canonical = document.head.querySelector('link[rel="canonical"]');
@@ -275,7 +288,7 @@ function PageMetadata() {
           description: pageMetadata["/"].description,
           founder: [
             { "@type": "Person", name: "Monta Cheathem" },
-            { "@type": "Person", name: "Kim Cheathem" }
+            { "@type": "Person", name: "Kim Cheathem" },
           ],
         },
         {
@@ -286,16 +299,16 @@ function PageMetadata() {
           description: metadata.description,
           isPartOf: { "@id": `${siteUrl}/#website` },
           about: { "@id": `${siteUrl}/#organization` },
-          primaryImageOfPage: { "@type": "ImageObject", url: imageUrl }
+          primaryImageOfPage: { "@type": "ImageObject", url: imageUrl },
         },
         {
           "@type": "WebSite",
           "@id": `${siteUrl}/#website`,
           url: `${siteUrl}/`,
           name: organizationName,
-          publisher: { "@id": `${siteUrl}/#organization` }
-        }
-      ]
+          publisher: { "@id": `${siteUrl}/#organization` },
+        },
+      ],
     };
     let script = document.head.querySelector('script[data-awd-schema="true"]');
     if (!script) {
@@ -312,7 +325,11 @@ function PageMetadata() {
 
 function DonateButton({ onClick, variant = "gold", children = "Donate" }) {
   return (
-    <button className={`button button--${variant}`} type="button" onClick={onClick}>
+    <button
+      className={`button button--${variant}`}
+      type="button"
+      onClick={onClick}
+    >
       <Heart aria-hidden="true" size={18} strokeWidth={1.8} />
       <span>{children}</span>
     </button>
@@ -321,7 +338,10 @@ function DonateButton({ onClick, variant = "gold", children = "Donate" }) {
 
 function Ornament({ compact = false }) {
   return (
-    <div className={compact ? "ornament ornament--left" : "ornament"} aria-hidden="true">
+    <div
+      className={compact ? "ornament ornament--left" : "ornament"}
+      aria-hidden="true"
+    >
       <span />
       <Sparkles size={15} />
       <span />
@@ -337,12 +357,17 @@ function Header({ onDonate }) {
     ["/About_us", "About"],
     ["/Ministries", "Ministries"],
     ["/Leadership", "Leadership"],
-    ["/Get_Involved", "Get Involved"]
+    ["/Get_Involved", "Get Involved"],
   ];
 
   return (
     <header className="site-header">
-      <NavLink className="brand" to="/" aria-label="All Walls Down home" onClick={closeMenu}>
+      <NavLink
+        className="brand"
+        to="/"
+        aria-label="All Walls Down home"
+        onClick={closeMenu}
+      >
         <img
           src="/assets/awd-logo.webp"
           alt=""
@@ -351,7 +376,9 @@ function Header({ onDonate }) {
           decoding="async"
           fetchPriority="high"
         />
-        <span>AWD <i /> All Walls Down</span>
+        <span>
+          AWD <i /> All Walls Down Organization
+        </span>
       </NavLink>
       <button
         className="menu-button"
@@ -362,7 +389,10 @@ function Header({ onDonate }) {
       >
         {open ? <X /> : <Menu />}
       </button>
-      <nav className={open ? "nav nav--open" : "nav"} aria-label="Main navigation">
+      <nav
+        className={open ? "nav nav--open" : "nav"}
+        aria-label="Main navigation"
+      >
         {navItems.map(([to, label]) => (
           <NavLink
             key={to}
@@ -421,7 +451,11 @@ function HomePage({ onDonate }) {
       <section className="hero">
         <div className="hero__image" aria-hidden="true" />
         <div className="hero__content shell">
-          <h1>Breaking<br />Every Barrier.</h1>
+          <h1>
+            Breaking
+            <br />
+            Every Barrier.
+          </h1>
           <Ornament />
           <p>
             Bringing the focus back to Christ and breaking every barrier that
@@ -444,7 +478,9 @@ function HomePage({ onDonate }) {
         <div className="shell home-mission__grid">
           <div>
             <p className="section-label">Our Mission</p>
-            <h2>To be the hands and feet <em>for Christ!</em></h2>
+            <h2>
+              To be the hands and feet <em>for Christ!</em>
+            </h2>
           </div>
           <p>
             We are called to love boldly, serve humbly, and create an atmosphere
@@ -518,14 +554,14 @@ function AboutPage({ onDonate }) {
             <h2>Where every wall has to come down.</h2>
             <Ornament compact />
             <p>
-              Our vision is to bring Truth to the place where it was always meant
-              to be—in the heart of the people—and thus by doing so, breaking
-              every barrier.
+              Our vision is to bring Truth to the place where it was always
+              meant to be—in the heart of the people—and thus by doing so,
+              breaking every barrier.
             </p>
             <p>
               We are creating a place and atmosphere where people of all
-              cultures can experience God on a personal level, where all walls in
-              a person&apos;s life have to come down.
+              cultures can experience God on a personal level, where all walls
+              in a person&apos;s life have to come down.
             </p>
             <blockquote>
               “There is neither Jew nor Gentile, neither slave nor free, nor is
@@ -535,7 +571,9 @@ function AboutPage({ onDonate }) {
           </div>
           <aside className="mission-panel mission-panel--large">
             <p className="section-label">Our Mission</p>
-            <h3>To be the hands and feet <em>for Christ!</em></h3>
+            <h3>
+              To be the hands and feet <em>for Christ!</em>
+            </h3>
             <p>
               Bringing the focus back to Christ and breaking every barrier that
               seeks to separate us.
@@ -557,12 +595,16 @@ function AboutPage({ onDonate }) {
             />
           </div>
           <div>
-            <p className="section-label">Founders of All Walls Down</p>
+            <p className="section-label">Founders of All Walls Down Organization</p>
             <h2>Monta &amp; Kim Cheathem</h2>
             <p>
               Together, Monta and Kim lead AWD with a shared commitment to
               serving people, centering Christ, and building a community where
               division gives way to unity.
+            </p>
+            <p>
+              Founded in a basic formula we like to call LAB that all people
+              should feel Loved Accepted and that they Belong.
             </p>
           </div>
         </div>
@@ -577,8 +619,8 @@ function MinistriesPage({ onDonate }) {
     <>
       <PageHero
         label="Our Ministries"
-        title="Three ministries. One mission."
-        body="Distinct communities, united in Christ and committed to breaking every barrier."
+        title="One organization, Many hands, One vision!"
+        body="Many hands united in Christ and committed to breaking every barrier."
         image="/assets/brothers-keepers.webp"
         imageClass="page-hero--ministries"
       />
@@ -586,7 +628,10 @@ function MinistriesPage({ onDonate }) {
         <div className="shell">
           <div className="ministry-list">
             {ministries.map((ministry, index) => (
-              <article className={`ministry ${ministry.className}`} key={ministry.name}>
+              <article
+                className={`ministry ${ministry.className}`}
+                key={ministry.name}
+              >
                 <div className="ministry__number">0{index + 1}</div>
                 <div className="ministry__art">
                   <img
@@ -604,6 +649,15 @@ function MinistriesPage({ onDonate }) {
                   <blockquote>{ministry.quote}</blockquote>
                   <p>{ministry.body}</p>
                   <p>{ministry.detail}</p>
+                  {ministry.scripture ? (
+                    <blockquote className="ministry__scripture">
+                      <strong>{ministry.scripture.reference}</strong>
+                      <span>{ministry.scripture.translation}</span>
+                      {ministry.scripture.verses.map((verse) => (
+                        <p key={verse}>{verse}</p>
+                      ))}
+                    </blockquote>
+                  ) : null}
                   <DonateButton onClick={onDonate} variant="outline">
                     Support This Ministry
                   </DonateButton>
@@ -624,7 +678,7 @@ function LeadershipPage({ onDonate }) {
       <PageHero
         label="Leadership"
         title="Leading with integrity and unity."
-        body="Servant leaders committed to guiding AWD, Brothers Keepers, and Daughters of the Kingdom."
+        body="Servant leaders committed to guiding AWD, Brothers Keepers, and Daughters of the King."
         image="/assets/core-leadership-transparent.webp"
         imageClass="page-hero--leadership"
       />
@@ -648,12 +702,17 @@ function LeadershipPage({ onDonate }) {
               <strong>Monta (Ta&apos;) Cheathem</strong>
             </div>
           </div>
-          <div className="roster" aria-label="Brothers Keepers Core Leadership Directors">
-            {leaders.map((leader) => <div key={leader}>{leader}</div>)}
+          <div
+            className="roster"
+            aria-label="Brothers Keepers Core Leadership Directors"
+          >
+            {leaders.map((leader) => (
+              <div key={leader}>{leader}</div>
+            ))}
           </div>
           <div className="dok-director">
             <img
-              src="/assets/dok.webp"
+              src="/assets/dok-transparent.png"
               alt=""
               width="1408"
               height="768"
@@ -661,11 +720,13 @@ function LeadershipPage({ onDonate }) {
               decoding="async"
             />
             <div>
-              <span>Daughters of the Kingdom</span>
+              <span>Daughters of the King</span>
               <h3>Founder / Director</h3>
               <strong>Kim Cheathem</strong>
             </div>
-            <DonateButton onClick={onDonate} variant="outline">Support DOK</DonateButton>
+            <DonateButton onClick={onDonate} variant="outline">
+              Support DOK
+            </DonateButton>
           </div>
         </div>
       </section>
@@ -737,7 +798,9 @@ function GivingCallout({ onDonate }) {
         <HandHeart aria-hidden="true" />
         <div>
           <h2>Your support helps us continue breaking every barrier.</h2>
-          <p>Together, we can reach more lives and bring hope to every heart.</p>
+          <p>
+            Together, we can reach more lives and bring hope to every heart.
+          </p>
         </div>
         <DonateButton onClick={onDonate}>Donate Now</DonateButton>
       </div>
@@ -758,7 +821,7 @@ function Footer({ onDonate }) {
             loading="lazy"
             decoding="async"
           />
-          <strong>AWD — All Walls Down</strong>
+          <strong>AWD — All Walls Down Organization</strong>
           <em>Breaking Every Barrier!</em>
         </div>
         <div>
@@ -772,8 +835,10 @@ function Footer({ onDonate }) {
           <span>Ministries</span>
           <NavLink to="/Ministries">Brothers Keepers</NavLink>
           <NavLink to="/Leadership">Core Leadership</NavLink>
-          <NavLink to="/Ministries">Daughters of the Kingdom</NavLink>
-          <button type="button" onClick={onDonate}>Donate</button>
+          <NavLink to="/Ministries">Daughters of the King</NavLink>
+          <button type="button" onClick={onDonate}>
+            Donate
+          </button>
         </div>
         <blockquote>
           “There is neither Jew nor Gentile, neither slave nor free, nor is
@@ -782,7 +847,9 @@ function Footer({ onDonate }) {
         </blockquote>
       </div>
       <div className="footer__bottom">
-        <span>© {new Date().getFullYear()} AWD — All Walls Down.</span>
+        <span>
+          © {new Date().getFullYear()} AWD — All Walls Down Organization.
+        </span>
         <span>Breaking Every Barrier!</span>
       </div>
     </footer>
@@ -817,7 +884,11 @@ function DonationModal({ open, onClose }) {
             <ShieldCheck aria-hidden="true" />
             <span>Secure giving through Zeffy</span>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close donation form">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close donation form"
+          >
             <X />
           </button>
         </header>
@@ -855,14 +926,35 @@ function Site() {
       <main className="route-stage" key={pathname}>
         <Routes>
           <Route path="/" element={<HomePage onDonate={openDonation} />} />
-          <Route path="/About_us" element={<AboutPage onDonate={openDonation} />} />
-          <Route path="/Ministries" element={<MinistriesPage onDonate={openDonation} />} />
-          <Route path="/Leadership" element={<LeadershipPage onDonate={openDonation} />} />
-          <Route path="/Get_Involved" element={<GetInvolvedPage onDonate={openDonation} />} />
+          <Route
+            path="/About_us"
+            element={<AboutPage onDonate={openDonation} />}
+          />
+          <Route
+            path="/Ministries"
+            element={<MinistriesPage onDonate={openDonation} />}
+          />
+          <Route
+            path="/Leadership"
+            element={<LeadershipPage onDonate={openDonation} />}
+          />
+          <Route
+            path="/Get_Involved"
+            element={<GetInvolvedPage onDonate={openDonation} />}
+          />
           <Route path="/about" element={<Navigate to="/About_us" replace />} />
-          <Route path="/ministries" element={<Navigate to="/Ministries" replace />} />
-          <Route path="/leadership" element={<Navigate to="/Leadership" replace />} />
-          <Route path="/get-involved" element={<Navigate to="/Get_Involved" replace />} />
+          <Route
+            path="/ministries"
+            element={<Navigate to="/Ministries" replace />}
+          />
+          <Route
+            path="/leadership"
+            element={<Navigate to="/Leadership" replace />}
+          />
+          <Route
+            path="/get-involved"
+            element={<Navigate to="/Get_Involved" replace />}
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
