@@ -1,12 +1,33 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardList,
+  Database,
+  Eye,
+  Fingerprint,
+  FileUp,
   HandHeart,
   Handshake,
   Heart,
+  Inbox,
+  KeyRound,
+  LayoutDashboard,
+  Lock,
+  Mail,
   Menu,
+  MessageSquareQuote,
+  Plus,
+  Send,
+  Shield,
   ShieldCheck,
+  Smartphone,
   Sparkles,
+  Tags,
+  UserCog,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -30,20 +51,24 @@ const imageDimensions = {
   "/assets/dok-clean.png": { width: 626, height: 712 },
 };
 
-const leaders = [
-  "Levell Cheathem",
-  "Antoine Herron",
-  "Stephen MacKenzie",
-  "Chris Smith",
-  "Dr. Josh Snyder",
-  "Emilio Jesus Ortega",
-  "Adrian Ahtone",
-  "Justin Hamlin",
-  "Mon Lorenzo",
-  "Bobby Lowe",
-  "Andrew Kirkland",
-  "Mike Best",
+const leadershipStaffSeeds = [
+  { name: "Monta (Ta') Cheathem", email: "monta.cheathem@allwallsdown.org", role: "Administrator" },
+  { name: "Kim Cheathem", email: "kim.cheathem@allwallsdown.org", role: "Administrator" },
+  { name: "Levell Cheathem", email: "levell.cheathem@allwallsdown.org" },
+  { name: "Antoine Herron", email: "antoine.herron@allwallsdown.org" },
+  { name: "Stephen MacKenzie", email: "stephen.mackenzie@allwallsdown.org" },
+  { name: "Chris Smith", email: "chris.smith@allwallsdown.org" },
+  { name: "Dr. Josh Snyder", email: "josh.snyder@allwallsdown.org" },
+  { name: "Emilio Jesus Ortega", email: "emilio.ortega@allwallsdown.org" },
+  { name: "Adrian Ahtone", email: "adrian.ahtone@allwallsdown.org" },
+  { name: "Justin Hamlin", email: "justin.hamlin@allwallsdown.org" },
+  { name: "Mon Lorenzo", email: "mon.lorenzo@allwallsdown.org" },
+  { name: "Bobby Lowe", email: "bobby.lowe@allwallsdown.org" },
+  { name: "Andrew Kirkland", email: "andrew.kirkland@allwallsdown.org" },
+  { name: "Mike Best", email: "mike.best@allwallsdown.org" },
 ];
+
+const pinnedLeadershipNames = ["Monta", "Kim"];
 
 const ministries = [
   {
@@ -97,6 +122,584 @@ const ways = [
     body: "Use your time and talents to be the hands and feet of Christ.",
   },
 ];
+
+const storageKeys = {
+  testimonials: "awd:testimonials",
+  prayerRequests: "awd:prayerRequests",
+  contacts: "awd:contacts",
+  contactCategories: "awd:contactCategories",
+  crmSettings: "awd:crmSettings",
+  users: "awd:staffUsers",
+  session: "awd:staffSession",
+  mfaPolicy: "awd:mfaPolicy",
+  mailSettings: "awd:mailSettings",
+};
+
+const prayerStatuses = ["Pending Prayer", "We have Prayed"];
+const testimonialStatuses = ["Pending Review", "Approved", "Needs Follow Up", "Declined"];
+const contactStatuses = ["New", "In Conversation", "Followed Up", "Closed"];
+const contactCategories = [
+  "General Contact",
+  "Volunteer",
+  "Partnership",
+  "Prayer",
+  "Brothers Keepers",
+  "Daughters of the King",
+  "Giving",
+  "Pastoral Follow Up",
+];
+const contactPriorities = ["Low", "Normal", "High", "Urgent"];
+const defaultCrmSettings = {
+  defaultStatus: "New",
+  defaultPriority: "Normal",
+  defaultOwner: "Ministry Staff",
+  autoFollowUpDays: "7",
+  requireCategory: true,
+  requireNextFollowUp: false,
+  notifyOnNewContact: true,
+};
+
+const csvImportSources = ["Google Contacts", "Outlook", "Auto Detect"];
+
+const normalizeCsvHeader = (header) =>
+  String(header || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\uFEFF/, "")
+    .replace(/[^a-z0-9]+/g, "");
+
+const parseCsvRows = (csvText) => {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const character = csvText[index];
+    const nextCharacter = csvText[index + 1];
+
+    if (character === '"' && inQuotes && nextCharacter === '"') {
+      cell += '"';
+      index += 1;
+    } else if (character === '"') {
+      inQuotes = !inQuotes;
+    } else if (character === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+    } else if ((character === "\n" || character === "\r") && !inQuotes) {
+      if (character === "\r" && nextCharacter === "\n") index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+};
+
+const getCsvValue = (record, possibleHeaders) => {
+  const normalizedHeaders = possibleHeaders.map(normalizeCsvHeader);
+  const match = normalizedHeaders.find((header) => record[header]);
+  return match ? record[match].trim() : "";
+};
+
+const splitCsvList = (value) =>
+  String(value || "")
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const buildContactFromCsvRecord = (record, defaults) => {
+  const firstName = getCsvValue(record, [
+    "First Name",
+    "Given Name",
+    "GivenName",
+    "First",
+  ]);
+  const middleName = getCsvValue(record, ["Middle Name", "Additional Name"]);
+  const lastName = getCsvValue(record, ["Last Name", "Family Name", "Surname", "Last"]);
+  const displayName = getCsvValue(record, [
+    "Name",
+    "Display Name",
+    "Full Name",
+    "Subject",
+  ]);
+  const company = getCsvValue(record, ["Company", "Organization Name", "Organization"]);
+  const name =
+    displayName ||
+    [firstName, middleName, lastName].filter(Boolean).join(" ") ||
+    company ||
+    "Imported Contact";
+  const email = getCsvValue(record, [
+    "E-mail Address",
+    "E-mail 2 Address",
+    "E-mail 3 Address",
+    "Email",
+    "Email Address",
+    "Primary Email",
+    "Home E-mail",
+    "Work E-mail",
+    "Other E-mail",
+  ]);
+  const phone = getCsvValue(record, [
+    "Mobile Phone",
+    "Mobile Phone 1",
+    "Phone 1 - Value",
+    "Home Phone",
+    "Business Phone",
+    "Work Phone",
+    "Primary Phone",
+    "Phone",
+    "Other Phone",
+  ]);
+  const notes = getCsvValue(record, ["Notes", "Note", "Description", "Comments"]);
+  const categoryValue = getCsvValue(record, [
+    "Categories",
+    "Category",
+    "Group Membership",
+    "Labels",
+  ]);
+  const importedTags = splitCsvList(categoryValue.replace(/\* myContacts/gi, ""));
+  const category = importedTags[0] || "Imported Contact";
+  const followUpDate = new Date();
+  followUpDate.setDate(
+    followUpDate.getDate() + Number(defaults.crmSettings.autoFollowUpDays || 0),
+  );
+
+  return {
+    id: createId("contact"),
+    name,
+    email,
+    phone,
+    reason: category,
+    category,
+    tags: ["Imported", ...importedTags.filter((tag) => tag !== category)],
+    priority: defaults.crmSettings.defaultPriority || "Normal",
+    assignedTo:
+      defaults.crmSettings.defaultOwner ||
+      defaults.sessionName ||
+      "Ministry Staff",
+    nextFollowUp: defaults.crmSettings.autoFollowUpDays
+      ? followUpDate.toISOString().slice(0, 10)
+      : "",
+    message: notes || `Imported from ${defaults.source} CSV.`,
+    status: defaults.crmSettings.defaultStatus || "New",
+    notes,
+    submittedAt: new Date().toISOString(),
+    importedFrom: defaults.source,
+    emailHistory: [],
+  };
+};
+
+const parseContactsCsv = (csvText, source, defaults) => {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) {
+    return { contacts: [], categories: [], skipped: 0 };
+  }
+  const headers = rows[0].map(normalizeCsvHeader);
+  const contacts = [];
+  let skipped = 0;
+
+  rows.slice(1).forEach((row) => {
+    const record = headers.reduce((current, header, index) => {
+      current[header] = String(row[index] || "").trim();
+      return current;
+    }, {});
+    const contact = buildContactFromCsvRecord(record, { ...defaults, source });
+    if (!contact.email && !contact.phone && contact.name === "Imported Contact") {
+      skipped += 1;
+      return;
+    }
+    contacts.push(contact);
+  });
+
+  return {
+    contacts,
+    categories: [...new Set(contacts.map((contact) => contact.category).filter(Boolean))],
+    skipped,
+  };
+};
+const staffRoles = [
+  "Ministry Staff",
+  "Prayer Team",
+  "Communications",
+  "User Admin",
+  "Administrator",
+];
+const seededAdministrator = {
+  id: "staff-jeremiah-johnson-admin",
+  name: "Jeremiah Johnson",
+  email: "treliasocialceo@gmail.com",
+  password: "ChangeMe123!",
+  role: "Administrator",
+  roles: ["Administrator"],
+  isActive: true,
+  mfaRequired: false,
+  mfaEnabled: false,
+  mfaMethods: {},
+  mfaEnrollmentStatus: "Administrator Exempt",
+  requirePasswordReset: true,
+  lastMfaUpdatedAt: "",
+  createdAt: "2026-06-26T00:00:00.000Z",
+};
+const defaultMfaPolicy = {
+  requireMfaForStaff: true,
+  exemptAdministrators: true,
+  forceFirstLoginEnrollment: true,
+  allowedMethods: {
+    authenticator: true,
+    googleAuthenticator: true,
+    biometric: true,
+    passwordManager: true,
+  },
+};
+const mfaMethodOptions = [
+  {
+    id: "authenticator",
+    label: "Authenticator App",
+    body: "Use an MFA app such as Microsoft Authenticator, Authy, or a similar TOTP app.",
+    icon: Smartphone,
+  },
+  {
+    id: "googleAuthenticator",
+    label: "Google Authenticator",
+    body: "Register a Google Authenticator code generator for staff sign-in.",
+    icon: KeyRound,
+  },
+  {
+    id: "biometric",
+    label: "Biometric Passkey",
+    body: "Register Face ID, Touch ID, Windows Hello, or a device passkey.",
+    icon: Fingerprint,
+  },
+  {
+    id: "passwordManager",
+    label: "Password Manager Passkey",
+    body: "Use a passkey saved in 1Password, iCloud Keychain, Google Password Manager, or similar.",
+    icon: Shield,
+  },
+];
+
+const sampleTestimonials = [
+  {
+    id: "testimonial-hope",
+    name: "Angela M.",
+    email: "angela@example.com",
+    city: "Lawton, OK",
+    ministry: "All Walls Down",
+    quote:
+      "AWD reminded our family that faith is not just something we talk about. It is something we live out together.",
+    submittedAt: "2026-06-01T12:00:00.000Z",
+    reviewedAt: "2026-06-03T12:00:00.000Z",
+    status: "Approved",
+    displayOnSite: true,
+    notes: "Approved sample testimonial for launch display.",
+  },
+  {
+    id: "testimonial-brothers",
+    name: "Marcus T.",
+    email: "marcus@example.com",
+    city: "Wichita Falls, TX",
+    ministry: "Brothers Keepers",
+    quote:
+      "Brothers Keepers gave me a place to be sharpened, encouraged, and held accountable with real brotherhood.",
+    submittedAt: "2026-06-04T12:00:00.000Z",
+    reviewedAt: "2026-06-05T12:00:00.000Z",
+    status: "Approved",
+    displayOnSite: true,
+    notes: "Approved sample testimonial for launch display.",
+  },
+  {
+    id: "testimonial-dok",
+    name: "Renee C.",
+    email: "renee@example.com",
+    city: "Oklahoma City, OK",
+    ministry: "Daughters of the King",
+    quote:
+      "Daughters of the King helped me remember who God says I am and gave me courage to walk in purpose.",
+    submittedAt: "2026-06-07T12:00:00.000Z",
+    reviewedAt: "2026-06-08T12:00:00.000Z",
+    status: "Approved",
+    displayOnSite: true,
+    notes: "Approved sample testimonial for launch display.",
+  },
+];
+
+const sampleContacts = [
+  {
+    id: "contact-sarah-partner",
+    name: "Sarah Mitchell",
+    email: "sarah.mitchell@example.com",
+    phone: "(580) 555-0184",
+    reason: "Partnership",
+    category: "Partnership",
+    tags: ["Small Group", "Outreach"],
+    priority: "High",
+    assignedTo: "Communications",
+    nextFollowUp: "2026-06-18",
+    message:
+      "Our small group would like to partner with AWD for an outreach night next month.",
+    status: "New",
+    notes: "Interested in community outreach partnership.",
+    submittedAt: "2026-06-10T14:30:00.000Z",
+    emailHistory: [],
+  },
+  {
+    id: "contact-david-volunteer",
+    name: "David Reynolds",
+    email: "david.reynolds@example.com",
+    phone: "(405) 555-0129",
+    reason: "Volunteer",
+    category: "Volunteer",
+    tags: ["Brothers Keepers", "Onboarding"],
+    priority: "Normal",
+    assignedTo: "Ministry Staff",
+    nextFollowUp: "2026-06-20",
+    message:
+      "I would like to serve with Brothers Keepers and learn where help is needed.",
+    status: "In Conversation",
+    notes: "Follow up with ministry onboarding details.",
+    submittedAt: "2026-06-12T16:45:00.000Z",
+    emailHistory: [],
+  },
+];
+
+const samplePrayerRequests = [
+  {
+    id: "prayer-family",
+    name: "Elena Brooks",
+    email: "elena@example.com",
+    phone: "",
+    request: "Please pray for healing and peace for our family this week.",
+    isConfidential: false,
+    status: "Pending Prayer",
+    notes: "",
+    submittedAt: "2026-06-11T10:00:00.000Z",
+  },
+  {
+    id: "prayer-work",
+    name: "Michael Carter",
+    email: "",
+    phone: "(580) 555-0133",
+    request: "I need prayer for wisdom and strength through a difficult job transition.",
+    isConfidential: true,
+    status: "Pending Prayer",
+    notes: "",
+    submittedAt: "2026-06-13T09:20:00.000Z",
+  },
+];
+
+const defaultMailSettings = {
+  providerName: "Google Workspace",
+  smtpHost: "smtp.gmail.com",
+  smtpPort: "587",
+  pop3Host: "pop.gmail.com",
+  pop3Port: "995",
+  username: "",
+  password: "",
+  fromName: "All Walls Down Organization",
+  fromEmail: "",
+  useTls: true,
+};
+
+const createId = (prefix) =>
+  `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+function readStored(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key, value) {
+  window.localStorage.setItem(key, JSON.stringify(value));
+  window.dispatchEvent(new CustomEvent("awd:data-change", { detail: { key } }));
+}
+
+function getUserRoles(user) {
+  if (!user) return [];
+  return Array.isArray(user.roles) && user.roles.length
+    ? user.roles
+    : [user.role || "Ministry Staff"];
+}
+
+function userHasRole(user, role) {
+  return getUserRoles(user).includes(role);
+}
+
+function isAdministrator(user) {
+  return userHasRole(user, "Administrator");
+}
+
+function isUserAdministrator(user) {
+  return isAdministrator(user) || userHasRole(user, "User Admin");
+}
+
+function shouldRequireUserMfa(user, policy = defaultMfaPolicy) {
+  if (!policy.requireMfaForStaff) return false;
+  if (policy.exemptAdministrators && isAdministrator(user)) return false;
+  return user?.mfaRequired !== false;
+}
+
+function isPinnedLeadershipUser(user) {
+  const normalizedName = String(user?.name || "").toLowerCase();
+  return pinnedLeadershipNames.some((name) => normalizedName.includes(name.toLowerCase()));
+}
+
+function shouldShowOnLeadership(user) {
+  return isPinnedLeadershipUser(user) || (user?.isActive !== false && user?.showOnLeadership);
+}
+
+function createSeededLeadershipUser(seed) {
+  const roles = [seed.role || "Ministry Staff"];
+  return {
+    id: `staff-${seed.email.split("@")[0].replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+    name: seed.name,
+    email: seed.email,
+    password: "ChangeMe123!",
+    role: roles[0],
+    roles,
+    isActive: true,
+    showOnLeadership: true,
+    mfaRequired: !roles.includes("Administrator"),
+    mfaEnabled: false,
+    mfaMethods: {},
+    mfaEnrollmentStatus: roles.includes("Administrator") ? "Administrator Exempt" : "Required",
+    requirePasswordReset: true,
+    lastMfaUpdatedAt: "",
+    createdAt: "2026-06-27T00:00:00.000Z",
+  };
+}
+
+function ensurePortalSeedData() {
+  if (typeof window === "undefined") return;
+  if (!window.localStorage.getItem(storageKeys.testimonials)) {
+    writeStored(storageKeys.testimonials, sampleTestimonials);
+  }
+  if (!window.localStorage.getItem(storageKeys.prayerRequests)) {
+    writeStored(storageKeys.prayerRequests, samplePrayerRequests);
+  } else if (!readStored(storageKeys.prayerRequests, []).length) {
+    writeStored(storageKeys.prayerRequests, samplePrayerRequests);
+  }
+  if (!window.localStorage.getItem(storageKeys.contacts)) {
+    writeStored(storageKeys.contacts, sampleContacts);
+  } else if (!readStored(storageKeys.contacts, []).length) {
+    writeStored(storageKeys.contacts, sampleContacts);
+  }
+  if (!window.localStorage.getItem(storageKeys.contactCategories)) {
+    writeStored(storageKeys.contactCategories, contactCategories);
+  }
+  if (!window.localStorage.getItem(storageKeys.crmSettings)) {
+    writeStored(storageKeys.crmSettings, defaultCrmSettings);
+  }
+  if (!window.localStorage.getItem(storageKeys.mfaPolicy)) {
+    writeStored(storageKeys.mfaPolicy, defaultMfaPolicy);
+  }
+  const storedUsers = readStored(storageKeys.users, []);
+  const leadershipSeedNames = new Set(
+    leadershipStaffSeeds.map((seed) => seed.name.toLowerCase()),
+  );
+  const migratedUsers = storedUsers.map((user) => {
+    const roles = getUserRoles(user);
+    const isSeededLeadershipUser =
+      leadershipSeedNames.has(String(user.name || "").toLowerCase()) ||
+      leadershipStaffSeeds.some(
+        (seed) => seed.email.toLowerCase() === String(user.email || "").toLowerCase(),
+      );
+    return {
+      ...user,
+      roles,
+      role: user.role || roles[0],
+      isActive: user.isActive !== false,
+      showOnLeadership:
+        typeof user.showOnLeadership === "boolean"
+          ? user.showOnLeadership
+          : isSeededLeadershipUser,
+      mfaRequired:
+        typeof user.mfaRequired === "boolean"
+          ? user.mfaRequired
+          : !roles.includes("Administrator"),
+      mfaEnrollmentStatus:
+        user.mfaEnrollmentStatus ||
+        (Object.values(user.mfaMethods || {}).some(Boolean)
+          ? "Enrolled"
+          : roles.includes("Administrator")
+            ? "Administrator Exempt"
+            : "Required"),
+    };
+  });
+  if (
+    !migratedUsers.some(
+      (user) => user.email.toLowerCase() === seededAdministrator.email.toLowerCase(),
+    )
+  ) {
+    migratedUsers.unshift(seededAdministrator);
+  }
+  leadershipStaffSeeds.forEach((seed) => {
+    if (
+      !migratedUsers.some(
+        (user) => user.email.toLowerCase() === seed.email.toLowerCase(),
+      )
+    ) {
+      migratedUsers.push(createSeededLeadershipUser(seed));
+    }
+  });
+  if (
+    storedUsers.length !== migratedUsers.length ||
+    storedUsers.some(
+      (user) => !user.roles || typeof user.showOnLeadership !== "boolean",
+    )
+  ) {
+    writeStored(storageKeys.users, migratedUsers);
+  } else if (!window.localStorage.getItem(storageKeys.users)) {
+    writeStored(storageKeys.users, [seededAdministrator]);
+  }
+  if (!window.localStorage.getItem(storageKeys.mailSettings)) {
+    writeStored(storageKeys.mailSettings, defaultMailSettings);
+  }
+}
+
+function useStoredCollection(key, fallback) {
+  const [items, setItems] = useState(() => readStored(key, fallback));
+
+  useEffect(() => {
+    const handleDataChange = (event) => {
+      if (!event.detail?.key || event.detail.key === key) {
+        setItems(readStored(key, fallback));
+      }
+    };
+    window.addEventListener("storage", handleDataChange);
+    window.addEventListener("awd:data-change", handleDataChange);
+    return () => {
+      window.removeEventListener("storage", handleDataChange);
+      window.removeEventListener("awd:data-change", handleDataChange);
+    };
+  }, [fallback, key]);
+
+  const updateItems = (nextItems) => {
+    const value = typeof nextItems === "function" ? nextItems(readStored(key, fallback)) : nextItems;
+    writeStored(key, value);
+    setItems(value);
+  };
+
+  return [items, updateItems];
+}
+
+const formatDate = (dateValue) =>
+  new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(dateValue));
 
 const emberParticles = Array.from({ length: 36 }, (_, index) => ({
   "--particle-x": `${8 + ((index * 19) % 86)}%`,
@@ -161,6 +764,14 @@ const pageMetadata = {
       "Pray, volunteer, partner, or donate to All Walls Down and help a Christian nonprofit serve communities and break barriers.",
     keywords:
       "volunteer with Christian nonprofit, donate to Christian nonprofit, faith based volunteer opportunities, Christian community outreach",
+    image: "/assets/awd-logo.webp",
+  },
+  "/staff_portal": {
+    title: "Staff Portal | All Walls Down",
+    description:
+      "All Walls Down ministry management portal for prayer requests, testimonials, contacts, and communication workflows.",
+    keywords:
+      "ministry CRM, prayer request management, church contact management, nonprofit staff portal",
     image: "/assets/awd-logo.webp",
   },
 };
@@ -470,6 +1081,434 @@ function PageHero({ label, title, body, image, imageClass = "" }) {
   );
 }
 
+function TestimonialsSection() {
+  const [testimonials, setTestimonials] = useStoredCollection(
+    storageKeys.testimonials,
+    sampleTestimonials,
+  );
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    city: "",
+    ministry: "All Walls Down",
+    quote: "",
+  });
+  const [submitted, setSubmitted] = useState(false);
+  const displayTestimonials = testimonials.filter(
+    (testimonial) =>
+      testimonial.status === "Approved" && testimonial.displayOnSite,
+  );
+
+  const updateForm = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const submitTestimonial = (event) => {
+    event.preventDefault();
+    const nextTestimonial = {
+      id: createId("testimonial"),
+      ...form,
+      quote: form.quote.trim(),
+      submittedAt: new Date().toISOString(),
+      reviewedAt: "",
+      status: "Pending Review",
+      displayOnSite: false,
+      notes: "",
+    };
+    setTestimonials((current) => [nextTestimonial, ...current]);
+    setForm({
+      name: "",
+      email: "",
+      city: "",
+      ministry: "All Walls Down",
+      quote: "",
+    });
+    setSubmitted(true);
+    setModalOpen(false);
+  };
+
+  return (
+    <section className="testimonials section" id="testimonials">
+      <div className="shell testimonials__grid">
+        <div className="testimonials__intro">
+          <p className="section-label">Testimonials</p>
+          <h2>Stories of faith, unity, and changed lives.</h2>
+          <p>
+            Approved stories from the AWD community appear here after review by
+            the ministry team.
+          </p>
+          <button
+            className="button button--gold"
+            type="button"
+            onClick={() => {
+              setSubmitted(false);
+              setModalOpen(true);
+            }}
+          >
+            <MessageSquareQuote size={18} /> Submit a Testimonial
+          </button>
+          {submitted ? (
+            <p className="form-confirmation">
+              Thank you. Your testimony has been received for review.
+            </p>
+          ) : null}
+        </div>
+        <div className="testimonial-list" aria-label="Approved testimonials">
+          {displayTestimonials.map((testimonial, index) => (
+            <article
+              key={testimonial.id}
+              className={`testimonial-bubble testimonial-bubble--${(index % 3) + 1}`}
+            >
+              <span className="testimonial-bubble__icon">
+                <MessageSquareQuote aria-hidden="true" />
+              </span>
+              <blockquote>“{testimonial.quote}”</blockquote>
+              <div className="testimonial-bubble__person">
+                <span aria-hidden="true">{testimonial.name.slice(0, 1)}</span>
+                <div>
+                  <strong>{testimonial.name}</strong>
+                  <small>
+                    {testimonial.ministry}
+                    {testimonial.city ? ` / ${testimonial.city}` : ""}
+                  </small>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+      <TestimonialModal
+        open={modalOpen}
+        form={form}
+        onChange={updateForm}
+        onSubmit={submitTestimonial}
+        onClose={() => setModalOpen(false)}
+      />
+    </section>
+  );
+}
+
+function TestimonialModal({ open, form, onChange, onSubmit, onClose }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event) => event.key === "Escape" && onClose();
+    document.body.classList.add("modal-open");
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.classList.remove("modal-open");
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="donation-modal testimonial-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="testimonial-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <MessageSquareQuote aria-hidden="true" />
+            <span>Share your testimony</span>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close testimonial form">
+            <X />
+          </button>
+        </header>
+        <div className="donation-modal__intro">
+          <h2 id="testimonial-title">Tell the story.</h2>
+          <p>
+            Share what God has done through All Walls Down. Testimonies are
+            reviewed before appearing on the site.
+          </p>
+        </div>
+        <form className="portal-form testimonial-modal__form" onSubmit={onSubmit}>
+          <label>
+            Name
+            <input
+              name="name"
+              value={form.name}
+              onChange={onChange}
+              required
+              placeholder="Your name"
+            />
+          </label>
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={onChange}
+              required
+              placeholder="you@example.com"
+            />
+          </label>
+          <label>
+            City
+            <input
+              name="city"
+              value={form.city}
+              onChange={onChange}
+              placeholder="City, State"
+            />
+          </label>
+          <label>
+            Ministry
+            <select name="ministry" value={form.ministry} onChange={onChange}>
+              <option>All Walls Down</option>
+              <option>Brothers Keepers</option>
+              <option>Daughters of the King</option>
+            </select>
+          </label>
+          <label className="form-span">
+            Testimony
+            <textarea
+              name="quote"
+              value={form.quote}
+              onChange={onChange}
+              required
+              rows="6"
+              placeholder="Share what God has done..."
+            />
+          </label>
+          <div className="testimonial-modal__actions form-span">
+            <button className="button button--gold" type="submit">
+              <Plus size={18} /> Submit for Review
+            </button>
+            <button className="button button--outline" type="button" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function PrayerRequestForm() {
+  const [, setPrayerRequests] = useStoredCollection(storageKeys.prayerRequests, []);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    request: "",
+    isConfidential: false,
+  });
+  const [submitted, setSubmitted] = useState(false);
+
+  const updateForm = (event) => {
+    const { name, type, checked, value } = event.target;
+    setForm((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const submitPrayerRequest = (event) => {
+    event.preventDefault();
+    setPrayerRequests((current) => [
+      {
+        id: createId("prayer"),
+        ...form,
+        submittedAt: new Date().toISOString(),
+        status: "Pending Prayer",
+        notes: "",
+      },
+      ...current,
+    ]);
+    setForm({
+      name: "",
+      email: "",
+      phone: "",
+      request: "",
+      isConfidential: false,
+    });
+    setSubmitted(true);
+  };
+
+  return (
+    <form className="portal-form public-form" onSubmit={submitPrayerRequest}>
+      <p className="section-label">Prayer Request</p>
+      <h3>Let us pray with you.</h3>
+      <label>
+        Name
+        <input
+          name="name"
+          value={form.name}
+          onChange={updateForm}
+          required
+          placeholder="Your name"
+        />
+      </label>
+      <label>
+        Email
+        <input
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={updateForm}
+          placeholder="you@example.com"
+        />
+      </label>
+      <label>
+        Phone
+        <input
+          name="phone"
+          value={form.phone}
+          onChange={updateForm}
+          placeholder="Optional"
+        />
+      </label>
+      <label className="form-span">
+        Request
+        <textarea
+          name="request"
+          value={form.request}
+          onChange={updateForm}
+          required
+          rows="6"
+          placeholder="How can we pray?"
+        />
+      </label>
+      <label className="checkbox-line form-span">
+        <input
+          name="isConfidential"
+          type="checkbox"
+          checked={form.isConfidential}
+          onChange={updateForm}
+        />
+        Keep this request confidential to ministry staff.
+      </label>
+      <button className="button button--gold" type="submit">
+        <HandHeart size={18} /> Submit Prayer Request
+      </button>
+      {submitted ? (
+        <p className="form-confirmation">
+          Your request has been received. Our team will pray with you.
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+function ContactForm() {
+  const [, setContacts] = useStoredCollection(storageKeys.contacts, []);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    reason: "General Contact",
+    message: "",
+  });
+  const [submitted, setSubmitted] = useState(false);
+
+  const updateForm = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const submitContact = (event) => {
+    event.preventDefault();
+    setContacts((current) => [
+      {
+        id: createId("contact"),
+        ...form,
+        category: form.reason,
+        submittedAt: new Date().toISOString(),
+        status: "New",
+        notes: "",
+        emailHistory: [],
+      },
+      ...current,
+    ]);
+    setForm({
+      name: "",
+      email: "",
+      phone: "",
+      reason: "General Contact",
+      message: "",
+    });
+    setSubmitted(true);
+  };
+
+  return (
+    <form className="portal-form public-form" onSubmit={submitContact}>
+      <p className="section-label">Contact AWD</p>
+      <h3>Start a conversation.</h3>
+      <label>
+        Name
+        <input
+          name="name"
+          value={form.name}
+          onChange={updateForm}
+          required
+          placeholder="Your name"
+        />
+      </label>
+      <label>
+        Email
+        <input
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={updateForm}
+          required
+          placeholder="you@example.com"
+        />
+      </label>
+      <label>
+        Phone
+        <input
+          name="phone"
+          value={form.phone}
+          onChange={updateForm}
+          placeholder="Optional"
+        />
+      </label>
+      <label>
+        Reason
+        <select name="reason" value={form.reason} onChange={updateForm}>
+          <option>General Contact</option>
+          <option>Volunteer</option>
+          <option>Partnership</option>
+          <option>Brothers Keepers</option>
+          <option>Daughters of the King</option>
+          <option>Giving</option>
+          <option>Pastoral Follow Up</option>
+        </select>
+      </label>
+      <label className="form-span">
+        Message
+        <textarea
+          name="message"
+          value={form.message}
+          onChange={updateForm}
+          required
+          rows="6"
+          placeholder="Tell us how we can help..."
+        />
+      </label>
+      <button className="button button--gold" type="submit">
+        <Mail size={18} /> Send Contact Request
+      </button>
+      {submitted ? (
+        <p className="form-confirmation">
+          Your message has been received. AWD staff can review it in the portal.
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
 function HomePage({ onDonate }) {
   return (
     <>
@@ -596,6 +1635,7 @@ function HomePage({ onDonate }) {
         </div>
       </section>
 
+      <TestimonialsSection />
       <GivingCallout onDonate={onDonate} />
     </>
   );
@@ -765,6 +1805,20 @@ function MinistriesPage({ onDonate }) {
 }
 
 function LeadershipPage({ onDonate }) {
+  const [staffUsers] = useStoredCollection(storageKeys.users, []);
+  const leadershipSource = staffUsers.length
+    ? staffUsers
+    : leadershipStaffSeeds.map(createSeededLeadershipUser);
+  const leadershipUsers = leadershipSource.filter(shouldShowOnLeadership);
+  const pinnedLeaders = leadershipUsers.filter(isPinnedLeadershipUser);
+  const rosterLeaders = leadershipUsers.filter((user) => !isPinnedLeadershipUser(user));
+  const montaLeader =
+    pinnedLeaders.find((user) => String(user.name || "").toLowerCase().includes("monta")) ||
+    createSeededLeadershipUser(leadershipStaffSeeds[0]);
+  const kimLeader =
+    pinnedLeaders.find((user) => String(user.name || "").toLowerCase().includes("kim")) ||
+    createSeededLeadershipUser(leadershipStaffSeeds[1]);
+
   return (
     <>
       <PageHero
@@ -791,15 +1845,15 @@ function LeadershipPage({ onDonate }) {
             />
             <div>
               <span>Founder / Director</span>
-              <strong>Monta (Ta&apos;) Cheathem</strong>
+              <strong>{montaLeader.name}</strong>
             </div>
           </div>
           <div
             className="roster"
             aria-label="Brothers Keepers Core Leadership Directors"
           >
-            {leaders.map((leader) => (
-              <div key={leader}>{leader}</div>
+            {rosterLeaders.map((leader) => (
+              <div key={leader.id || leader.email}>{leader.name}</div>
             ))}
           </div>
           <div className="dok-director">
@@ -814,7 +1868,7 @@ function LeadershipPage({ onDonate }) {
             <div>
               <span>Daughters of the King</span>
               <h3>Founder / Director</h3>
-              <strong>Kim Cheathem</strong>
+              <strong>{kimLeader.name}</strong>
             </div>
             <DonateButton onClick={onDonate} variant="outline">
               Support DOK
@@ -876,6 +1930,10 @@ function GetInvolvedPage({ onDonate }) {
               “Our mission is simple: to be the hands and feet for Christ.”
               <cite>AWD — All Walls Down</cite>
             </blockquote>
+          </div>
+          <div className="public-intake-grid">
+            <PrayerRequestForm />
+            <ContactForm />
           </div>
         </div>
       </section>
@@ -1002,11 +2060,2819 @@ function DonationModal({ open, onClose }) {
   );
 }
 
+function StaffAuth({ onLogin }) {
+  const [users, setUsers] = useStoredCollection(storageKeys.users, []);
+  const [mfaPolicy] = useStoredCollection(storageKeys.mfaPolicy, defaultMfaPolicy);
+  const [mode, setMode] = useState(users.length ? "login" : "create");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "Ministry Staff",
+  });
+  const [error, setError] = useState("");
+
+  const updateForm = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const createAccount = (event) => {
+    event.preventDefault();
+    if (users.some((user) => user.email.toLowerCase() === form.email.toLowerCase())) {
+      setError("An account already exists for this email.");
+      return;
+    }
+    const nextUser = {
+      id: createId("staff"),
+      name: form.name,
+      email: form.email,
+      password: form.password,
+      role: form.role,
+      roles: [form.role],
+      isActive: true,
+      mfaRequired: form.role !== "Administrator",
+      mfaEnabled: false,
+      mfaMethods: {},
+      mfaEnrollmentStatus: form.role === "Administrator" ? "Administrator Exempt" : "Required",
+      lastMfaUpdatedAt: "",
+      createdAt: new Date().toISOString(),
+    };
+    setUsers((current) => [nextUser, ...current]);
+    onLogin(nextUser, {
+      mfaSetupRequired: shouldRequireUserMfa(nextUser, mfaPolicy),
+    });
+  };
+
+  const login = (event) => {
+    event.preventDefault();
+    const user = users.find(
+      (currentUser) =>
+        currentUser.email.toLowerCase() === form.email.toLowerCase() &&
+        currentUser.password === form.password,
+    );
+    if (!user) {
+      setError("The email or password did not match a staff account.");
+      return;
+    }
+    if (user.isActive === false) {
+      setError("This staff account is deactivated.");
+      return;
+    }
+    const mfaRequired = shouldRequireUserMfa(user, mfaPolicy);
+    const hasMfa = Object.values(user.mfaMethods || {}).some(Boolean);
+    onLogin(user, {
+      mfaSetupRequired: mfaPolicy.forceFirstLoginEnrollment && mfaRequired && !hasMfa,
+    });
+  };
+
+  return (
+    <section className="staff-auth">
+      <div className="staff-auth__panel">
+        <img src="/assets/awd-logo.webp" alt="" width="1190" height="1322" />
+        <p className="section-label">Staff Portal</p>
+        <h1>Ministry Management</h1>
+        <p>
+          Review prayer requests, moderate testimonials, manage contacts, and
+          prepare ministry follow-up.
+        </p>
+        <div className="staff-auth__switch">
+          <button
+            type="button"
+            className={mode === "login" ? "is-active" : ""}
+            onClick={() => {
+              setMode("login");
+              setError("");
+            }}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            className={mode === "create" ? "is-active" : ""}
+            onClick={() => {
+              setMode("create");
+              setError("");
+            }}
+          >
+            Create Account
+          </button>
+        </div>
+        <form
+          className="portal-form"
+          onSubmit={mode === "create" ? createAccount : login}
+        >
+          {mode === "create" ? (
+            <label>
+              Name
+              <input
+                name="name"
+                value={form.name}
+                onChange={updateForm}
+                required
+                placeholder="Staff name"
+              />
+            </label>
+          ) : null}
+          <label>
+            Email
+            <input
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={updateForm}
+              required
+              placeholder="staff@example.com"
+            />
+          </label>
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={updateForm}
+              required
+              placeholder="Password"
+            />
+          </label>
+          {mode === "create" ? (
+            <label>
+              Role
+              <select name="role" value={form.role} onChange={updateForm}>
+                {staffRoles.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {error ? <p className="form-error">{error}</p> : null}
+          <button className="button button--gold" type="submit">
+            <Lock size={18} />
+            {mode === "create" ? "Create Account" : "Login"}
+          </button>
+          <p className="staff-auth__note">
+            Browser demo storage is active. Production authentication should use
+            a server-side identity provider.
+          </p>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+function MfaEnrollmentGate({ session, policy, onEnroll, onLogout }) {
+  const allowedMethods = mfaMethodOptions.filter(
+    ({ id }) => policy.allowedMethods?.[id] !== false,
+  );
+  const [selectedMethods, setSelectedMethods] = useState(
+    allowedMethods.length ? [allowedMethods[0].id] : [],
+  );
+  const [error, setError] = useState("");
+
+  const toggleMethod = (methodId, enabled) => {
+    setSelectedMethods((current) =>
+      enabled
+        ? [...new Set([...current, methodId])]
+        : current.filter((id) => id !== methodId),
+    );
+  };
+
+  const completeEnrollment = () => {
+    if (!selectedMethods.length) {
+      setError("Select at least one MFA method before continuing.");
+      return;
+    }
+    onEnroll(selectedMethods);
+  };
+
+  return (
+    <section className="staff-auth">
+      <div className="staff-auth__panel mfa-gate">
+        <ShieldCheck aria-hidden="true" />
+        <p className="section-label">MFA Required</p>
+        <h1>Secure Your Account</h1>
+        <p>
+          {session.name || session.email}, your account requires multi-factor
+          authentication before you can enter the staff portal.
+        </p>
+        <div className="mfa-methods">
+          {allowedMethods.map(({ id, label, body, icon: Icon }) => (
+            <label key={id} className="mfa-method">
+              <input
+                type="checkbox"
+                checked={selectedMethods.includes(id)}
+                onChange={(event) => toggleMethod(id, event.target.checked)}
+              />
+              <Icon />
+              <span>
+                <strong>{label}</strong>
+                <small>{body}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="account-actions">
+          <button className="button button--gold" type="button" onClick={completeEnrollment}>
+            <ShieldCheck size={18} /> Complete MFA Enrollment
+          </button>
+          <button className="button button--outline" type="button" onClick={onLogout}>
+            Logout
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StatusBadge({ children }) {
+  return <span className="status-badge">{children}</span>;
+}
+
+function EmptyPortalState({ children }) {
+  return <p className="portal-empty">{children}</p>;
+}
+
+function StaffPortalPage() {
+  const [session, setSession] = useState(() =>
+    readStored(storageKeys.session, null),
+  );
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [expandedMenus, setExpandedMenus] = useState({
+    overview: true,
+    crm: true,
+    prayer: false,
+    testimonials: false,
+    communications: false,
+    administration: false,
+    system: false,
+  });
+  const [prayerRequests, setPrayerRequests] = useStoredCollection(
+    storageKeys.prayerRequests,
+    samplePrayerRequests,
+  );
+  const [testimonials, setTestimonials] = useStoredCollection(
+    storageKeys.testimonials,
+    sampleTestimonials,
+  );
+  const [contacts, setContacts] = useStoredCollection(
+    storageKeys.contacts,
+    sampleContacts,
+  );
+  const [staffUsers, setStaffUsers] = useStoredCollection(storageKeys.users, []);
+  const [managedContactCategories, setManagedContactCategories] =
+    useStoredCollection(storageKeys.contactCategories, contactCategories);
+  const [crmSettings, setCrmSettings] = useStoredCollection(
+    storageKeys.crmSettings,
+    defaultCrmSettings,
+  );
+  const [mfaPolicy, setMfaPolicy] = useStoredCollection(
+    storageKeys.mfaPolicy,
+    defaultMfaPolicy,
+  );
+  const [mailSettings, setMailSettings] = useStoredCollection(
+    storageKeys.mailSettings,
+    defaultMailSettings,
+  );
+  const [composer, setComposer] = useState({
+    contactId: "",
+    subject: "",
+    message: "",
+  });
+  const [mailNotice, setMailNotice] = useState("");
+  const [selectedTestimonialId, setSelectedTestimonialId] = useState("");
+  const [selectedTestimonialIds, setSelectedTestimonialIds] = useState([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [selectedPrayerId, setSelectedPrayerId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactStatusFilter, setContactStatusFilter] = useState("Active");
+  const [contactCategoryFilter, setContactCategoryFilter] = useState("All Categories");
+  const [categoryDraft, setCategoryDraft] = useState("");
+  const [csvImportSource, setCsvImportSource] = useState("Auto Detect");
+  const [csvImportNotice, setCsvImportNotice] = useState("");
+  const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [newStaffForm, setNewStaffForm] = useState({
+    name: "",
+    email: "",
+    password: "ChangeMe123!",
+    roles: ["Ministry Staff"],
+    mfaRequired: true,
+    showOnLeadership: false,
+  });
+
+  useEffect(() => {
+    if (!selectedTestimonialId && testimonials.length) {
+      setSelectedTestimonialId(testimonials[0].id);
+    }
+  }, [selectedTestimonialId, testimonials]);
+
+  const login = (user, options = {}) => {
+    const roles = getUserRoles(user);
+    const nextSession = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role || roles[0],
+      roles,
+      mfaSetupRequired: Boolean(options.mfaSetupRequired),
+      loggedInAt: new Date().toISOString(),
+    };
+    writeStored(storageKeys.session, nextSession);
+    setSession(nextSession);
+  };
+
+  const isUserAdmin = isUserAdministrator(session);
+
+  const currentStaffUser =
+    staffUsers.find((user) => user.id === session?.id) ||
+    staffUsers.find((user) => user.email === session?.email) ||
+    session;
+
+  const updateStaffUser = (id, patch) => {
+    setStaffUsers((current) =>
+      current.map((user) =>
+        user.id === id
+          ? {
+              ...user,
+              ...patch,
+              roles: patch.roles || user.roles || [user.role || "Ministry Staff"],
+              role: patch.role || patch.roles?.[0] || user.role || "Ministry Staff",
+              mfaEnrollmentStatus:
+                patch.mfaEnrollmentStatus ||
+                (patch.mfaRequired === false
+                  ? "Not Required"
+                  : user.mfaEnrollmentStatus || "Required"),
+              updatedAt: new Date().toISOString(),
+            }
+          : user,
+      ),
+    );
+    if (id === session?.id) {
+      const nextRoles = patch.roles || session.roles || [session.role];
+      const nextSession = {
+        ...session,
+        name: patch.name ?? session.name,
+        email: patch.email ?? session.email,
+        role: patch.role ?? nextRoles[0] ?? session.role,
+        roles: nextRoles,
+      };
+      writeStored(storageKeys.session, nextSession);
+      setSession(nextSession);
+    }
+  };
+
+  const toggleMfaMethod = (id, methodId, enabled) => {
+    const user = staffUsers.find((staffUser) => staffUser.id === id);
+    updateStaffUser(id, {
+      mfaMethods: {
+        ...(user?.mfaMethods || {}),
+        [methodId]: enabled,
+      },
+      mfaEnabled: enabled || Object.entries(user?.mfaMethods || {}).some(
+        ([key, value]) => key !== methodId && value,
+      ),
+      mfaEnrollmentStatus: enabled ? "Enrolled" : "Required",
+      lastMfaUpdatedAt: new Date().toISOString(),
+    });
+  };
+
+  const completeMfaEnrollment = (methods) => {
+    const methodMap = methods.reduce(
+      (accumulator, methodId) => ({ ...accumulator, [methodId]: true }),
+      {},
+    );
+    updateStaffUser(session.id, {
+      mfaMethods: methodMap,
+      mfaEnabled: true,
+      mfaRequired: true,
+      mfaEnrollmentStatus: "Enrolled",
+      lastMfaUpdatedAt: new Date().toISOString(),
+    });
+    const nextSession = { ...session, mfaSetupRequired: false };
+    writeStored(storageKeys.session, nextSession);
+    setSession(nextSession);
+  };
+
+  const updateNewStaffForm = (patch) => {
+    setNewStaffForm((current) => ({ ...current, ...patch }));
+  };
+
+  const toggleNewStaffRole = (role, enabled) => {
+    setNewStaffForm((current) => {
+      const roles = enabled
+        ? [...new Set([...current.roles, role])]
+        : current.roles.filter((currentRole) => currentRole !== role);
+      return {
+        ...current,
+        roles: roles.length ? roles : ["Ministry Staff"],
+        mfaRequired: roles.includes("Administrator") ? false : current.mfaRequired,
+      };
+    });
+  };
+
+  const createStaffAccount = (event) => {
+    event.preventDefault();
+    if (!isUserAdmin) return;
+    if (
+      staffUsers.some(
+        (user) => user.email.toLowerCase() === newStaffForm.email.toLowerCase(),
+      )
+    ) {
+      return;
+    }
+    const roles = newStaffForm.roles.length
+      ? newStaffForm.roles
+      : ["Ministry Staff"];
+    const nextUser = {
+      id: createId("staff"),
+      name: newStaffForm.name,
+      email: newStaffForm.email,
+      password: newStaffForm.password,
+      role: roles[0],
+      roles,
+      isActive: true,
+      showOnLeadership: newStaffForm.showOnLeadership,
+      mfaRequired: roles.includes("Administrator") ? false : newStaffForm.mfaRequired,
+      mfaEnabled: false,
+      mfaMethods: {},
+      mfaEnrollmentStatus: roles.includes("Administrator")
+        ? "Administrator Exempt"
+        : "Required",
+      requirePasswordReset: true,
+      lastMfaUpdatedAt: "",
+      createdAt: new Date().toISOString(),
+    };
+    setStaffUsers((current) => [nextUser, ...current]);
+    setSelectedStaffId(nextUser.id);
+    setNewStaffForm({
+      name: "",
+      email: "",
+      password: "ChangeMe123!",
+      roles: ["Ministry Staff"],
+      mfaRequired: true,
+      showOnLeadership: false,
+    });
+  };
+
+  const toggleStaffRole = (user, role, enabled) => {
+    if (!isUserAdmin) return;
+    const roles = enabled
+      ? [...new Set([...getUserRoles(user), role])]
+      : getUserRoles(user).filter((currentRole) => currentRole !== role);
+    const nextRoles = roles.length ? roles : ["Ministry Staff"];
+    updateStaffUser(user.id, {
+      roles: nextRoles,
+      role: nextRoles[0],
+      mfaRequired: nextRoles.includes("Administrator") ? false : user.mfaRequired !== false,
+      mfaEnrollmentStatus: nextRoles.includes("Administrator")
+        ? "Administrator Exempt"
+        : user.mfaEnrollmentStatus || "Required",
+    });
+  };
+
+  const updateMfaPolicy = (patch) => {
+    setMfaPolicy((current) => ({ ...current, ...patch }));
+  };
+
+  const togglePolicyMethod = (methodId, enabled) => {
+    setMfaPolicy((current) => ({
+      ...current,
+      allowedMethods: {
+        ...(current.allowedMethods || {}),
+        [methodId]: enabled,
+      },
+    }));
+  };
+
+  const selectedStaffUser =
+    staffUsers.find((user) => user.id === selectedStaffId) || staffUsers[0];
+
+  const logout = () => {
+    window.localStorage.removeItem(storageKeys.session);
+    setSession(null);
+  };
+
+  const updatePrayer = (id, patch) => {
+    setPrayerRequests((current) =>
+      current.map((request) =>
+        request.id === id
+          ? {
+              ...request,
+              ...patch,
+              prayedAt:
+                patch.status === "We have Prayed"
+                  ? new Date().toISOString()
+                  : request.prayedAt,
+            }
+          : request,
+      ),
+    );
+  };
+
+  const updateTestimonial = (id, patch) => {
+    setTestimonials((current) =>
+      current.map((testimonial) =>
+        testimonial.id === id
+          ? {
+              ...testimonial,
+              ...patch,
+              reviewedAt:
+                patch.status === "Approved"
+                  ? new Date().toISOString()
+                  : testimonial.reviewedAt,
+            }
+          : testimonial,
+      ),
+    );
+  };
+
+  const bulkApproveTestimonials = () => {
+    if (!selectedTestimonialIds.length) return;
+    setTestimonials((current) =>
+      current.map((testimonial) =>
+        selectedTestimonialIds.includes(testimonial.id)
+          ? {
+              ...testimonial,
+              status: "Approved",
+              displayOnSite: true,
+              reviewedAt: new Date().toISOString(),
+            }
+          : testimonial,
+      ),
+    );
+    setSelectedTestimonialIds([]);
+  };
+
+  const toggleTestimonialSelection = (id) => {
+    setSelectedTestimonialIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id],
+    );
+  };
+
+  const updateContact = (id, patch) => {
+    setContacts((current) =>
+      current.map((contact) =>
+        contact.id === id
+          ? { ...contact, ...patch, updatedAt: new Date().toISOString() }
+          : contact,
+      ),
+    );
+  };
+
+  const createContactRecord = () => {
+    const followUpDate = new Date();
+    followUpDate.setDate(
+      followUpDate.getDate() + Number(crmSettings.autoFollowUpDays || 0),
+    );
+    const nextContact = {
+      id: createId("contact"),
+      name: "New Contact",
+      email: "",
+      phone: "",
+      reason: "General Contact",
+      category: "General Contact",
+      tags: [],
+      priority: crmSettings.defaultPriority || "Normal",
+      assignedTo: crmSettings.defaultOwner || session.name || "Ministry Staff",
+      nextFollowUp: crmSettings.autoFollowUpDays
+        ? followUpDate.toISOString().slice(0, 10)
+        : "",
+      message: "",
+      status: crmSettings.defaultStatus || "New",
+      notes: "",
+      submittedAt: new Date().toISOString(),
+      emailHistory: [],
+    };
+    setContacts((current) => [nextContact, ...current]);
+    setSelectedContactId(nextContact.id);
+    setContactStatusFilter("Active");
+    setContactCategoryFilter("All Categories");
+  };
+
+  const toggleMenu = (id) => {
+    setExpandedMenus((current) => ({ ...current, [id]: !current[id] }));
+  };
+
+  const addContactCategory = () => {
+    const nextCategory = categoryDraft.trim();
+    if (!nextCategory) return;
+    setManagedContactCategories((current) =>
+      current.some((category) => category.toLowerCase() === nextCategory.toLowerCase())
+        ? current
+        : [...current, nextCategory],
+    );
+    setContactCategoryFilter(nextCategory);
+    setCategoryDraft("");
+  };
+
+  const removeContactCategory = (category) => {
+    if (category === "General Contact") return;
+    setManagedContactCategories((current) =>
+      current.filter((currentCategory) => currentCategory !== category),
+    );
+    setContacts((current) =>
+      current.map((contact) =>
+        contact.category === category
+          ? { ...contact, category: "General Contact", updatedAt: new Date().toISOString() }
+          : contact,
+      ),
+    );
+    if (contactCategoryFilter === category) setContactCategoryFilter("All Categories");
+  };
+
+  const importContactsCsv = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setCsvImportBusy(true);
+    setCsvImportNotice("");
+
+    try {
+      const text = await file.text();
+      const source =
+        csvImportSource === "Auto Detect"
+          ? file.name.toLowerCase().includes("outlook")
+            ? "Outlook"
+            : "Google Contacts"
+          : csvImportSource;
+      const parsed = parseContactsCsv(text, source, {
+        crmSettings,
+        sessionName: session.name || session.email,
+      });
+      const existingKeys = new Set(
+        contacts.flatMap((contact) =>
+          [contact.email, contact.phone]
+            .filter(Boolean)
+            .map((value) => value.trim().toLowerCase()),
+        ),
+      );
+      const nextContacts = [];
+      let duplicateCount = 0;
+
+      parsed.contacts.forEach((contact) => {
+        const keys = [contact.email, contact.phone]
+          .filter(Boolean)
+          .map((value) => value.trim().toLowerCase());
+        const isDuplicate = keys.some((key) => existingKeys.has(key));
+        if (isDuplicate) {
+          duplicateCount += 1;
+          return;
+        }
+        keys.forEach((key) => existingKeys.add(key));
+        nextContacts.push(contact);
+      });
+
+      if (nextContacts.length) {
+        setContacts((current) => [...nextContacts, ...current]);
+        setManagedContactCategories((current) => [
+          ...current,
+          ...parsed.categories.filter(
+            (category) =>
+              !current.some(
+                (currentCategory) =>
+                  currentCategory.toLowerCase() === category.toLowerCase(),
+              ),
+          ),
+        ]);
+        setContactStatusFilter("Active");
+        setContactCategoryFilter("All Categories");
+        setSelectedContactId(nextContacts[0].id);
+      }
+
+      setCsvImportNotice(
+        `Imported ${nextContacts.length} contacts from ${source}. Skipped ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} and ${parsed.skipped} blank row${parsed.skipped === 1 ? "" : "s"}.`,
+      );
+    } catch {
+      setCsvImportNotice("Unable to read that CSV. Check the file export and try again.");
+    } finally {
+      setCsvImportBusy(false);
+      event.target.value = "";
+    }
+  };
+
+  const updateCrmSetting = (name, value) => {
+    setCrmSettings((current) => ({ ...current, [name]: value }));
+  };
+
+  const updateMailSettings = (event) => {
+    const { name, type, checked, value } = event.target;
+    setMailSettings((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const selectContactForEmail = (contact) => {
+    setSelectedContactId(contact.id);
+    setComposer({
+      contactId: contact.id,
+      subject: `Following up from All Walls Down`,
+      message: `Hello ${contact.name},\n\nThank you for reaching out to All Walls Down Organization. We wanted to follow up with you personally.\n\nBlessings,\n${mailSettings.fromName}`,
+    });
+    setMailNotice("");
+  };
+
+  const queueEmail = async (event) => {
+    event.preventDefault();
+    const contact = contacts.find((item) => item.id === composer.contactId);
+    if (!contact) {
+      setMailNotice("Choose a contact before sending an email.");
+      return;
+    }
+    if (!contact.email) {
+      setMailNotice("This contact needs an email address before you can send a message.");
+      return;
+    }
+    if (!mailSettings.smtpHost || !mailSettings.smtpPort) {
+      setMailNotice("Add SMTP host and port in Mail Settings before sending.");
+      return;
+    }
+    if (!mailSettings.username || !mailSettings.password) {
+      setMailNotice("Add the SMTP username and app password in Mail Settings before sending.");
+      return;
+    }
+    const emailRecord = {
+      id: createId("email"),
+      subject: composer.subject,
+      message: composer.message,
+      preparedAt: new Date().toISOString(),
+      fromEmail: mailSettings.fromEmail,
+      smtpHost: mailSettings.smtpHost,
+      status: "Sending",
+    };
+    setMailNotice("Sending email...");
+
+    try {
+      const response = await fetch("http://localhost:8787/api/email/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-awd-staff-email": session.email || "",
+        },
+        body: JSON.stringify({
+          contactId: contact.id,
+          to: contact.email,
+          subject: composer.subject,
+          message: composer.message,
+          smtp: mailSettings,
+          staff: {
+            id: session.id,
+            name: session.name,
+            email: session.email,
+          },
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.email?.errorMessage || result.error || "Email send failed");
+      }
+      const sentRecord = {
+        ...emailRecord,
+        ...(result.email || {}),
+        status: "Sent",
+        sentAt: result.email?.sentAt || new Date().toISOString(),
+      };
+      updateContact(contact.id, {
+        status: "In Conversation",
+        emailHistory: [sentRecord, ...(contact.emailHistory || [])],
+      });
+      setMailNotice(`Email sent to ${contact.email}.`);
+    } catch (error) {
+      const failedRecord = {
+        ...emailRecord,
+        status: "Failed",
+        errorMessage: error.message,
+      };
+      updateContact(contact.id, {
+        emailHistory: [failedRecord, ...(contact.emailHistory || [])],
+      });
+      setMailNotice(
+        `Email was not sent: ${error.message}. Confirm the API server is running and SMTP credentials are correct.`,
+      );
+    }
+  };
+
+  if (!session) return <StaffAuth onLogin={login} />;
+
+  if (session.mfaSetupRequired) {
+    return (
+      <MfaEnrollmentGate
+        session={session}
+        policy={mfaPolicy}
+        onEnroll={completeMfaEnrollment}
+        onLogout={logout}
+      />
+    );
+  }
+
+  const pendingPrayerCount = prayerRequests.filter(
+    (request) => request.status === "Pending Prayer",
+  ).length;
+  const pendingTestimonials = testimonials.filter(
+    (testimonial) => testimonial.status === "Pending Review",
+  ).length;
+  const newContacts = contacts.filter((contact) => contact.status === "New").length;
+  const notContactedContacts = contacts.filter((contact) => contact.status === "New").length;
+  const contactedContacts = contacts.filter((contact) =>
+    ["In Conversation", "Followed Up"].includes(contact.status),
+  ).length;
+  const closedContacts = contacts.filter((contact) => contact.status === "Closed").length;
+  const visibleTestimonials = testimonials.filter(
+    (testimonial) => testimonial.status === "Approved" && testimonial.displayOnSite,
+  ).length;
+  const selectedTestimonial =
+    testimonials.find((testimonial) => testimonial.id === selectedTestimonialId) ||
+    testimonials[0];
+  const contactQuery = contactSearch.trim().toLowerCase();
+  const activeContacts = contacts
+    .filter((contact) => {
+      if (contactStatusFilter === "All Contacts") return true;
+      if (contactStatusFilter === "Active") return contact.status !== "Closed";
+      return contact.status === contactStatusFilter;
+    })
+    .filter((contact) =>
+      contactCategoryFilter === "All Categories"
+        ? true
+        : (contact.category || contact.reason) === contactCategoryFilter,
+    )
+    .filter((contact) =>
+      contactQuery
+        ? [
+            contact.name,
+            contact.email,
+            contact.phone,
+            contact.reason,
+            contact.category,
+            contact.status,
+            contact.assignedTo,
+            ...(contact.tags || []),
+          ]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(contactQuery))
+        : true,
+    );
+  const selectedContact =
+    contacts.find((contact) => contact.id === selectedContactId) || null;
+  const selectedPrayer =
+    prayerRequests.find((request) => request.id === selectedPrayerId) || null;
+  const activeNavItem =
+    [
+      ["dashboard", "Dashboard"],
+      ["crm-dashboard", "CRM Dashboard"],
+      ["crm-new-contact", "New Contact"],
+      ["crm-import", "Import Contacts"],
+      ["crm-email-composer", "Email Composer"],
+      ["crm-categories", "CRM Categories"],
+      ["crm-settings", "CRM Settings"],
+      ["prayer-dashboard", "Prayer Dashboard"],
+      ["prayer-queue", "Prayer Queue"],
+      ["prayer-settings", "Prayer Settings"],
+      ["testimonial-dashboard", "Testimonial Dashboard"],
+      ["testimonial-review", "Review Queue"],
+      ["testimonial-displayed", "Displayed Testimonials"],
+      ["testimonial-settings", "Testimonial Settings"],
+      ["staff-dashboard", "Staff Dashboard"],
+      ["staff-accounts", "Staff Accounts"],
+      ["staff-mfa", "MFA Management"],
+      ["email-settings", "Mail Settings"],
+      ["email-tools", "Email Tools"],
+      ["database-schema", "Database Schema"],
+    ].find(([id]) => id === activeTab)?.[1] || "Dashboard";
+  const portalNavigation = [
+    {
+      id: "overview",
+      label: "Overview",
+      items: [
+        {
+          id: "dashboard",
+          label: "Dashboard",
+          detail: "Ministry health, queues, and quick navigation",
+        },
+      ],
+    },
+    {
+      id: "crm",
+      label: "Ministry Operations",
+      items: [
+        {
+          id: "crm-dashboard",
+          label: "CRM Dashboard",
+          detail: "Pipeline counts and contact list",
+          count: newContacts,
+        },
+        { id: "crm-new-contact", label: "New Contact", detail: "Create and edit a new contact" },
+        { id: "crm-import", label: "Import Contacts", detail: "Upload Google or Outlook CSV" },
+        { id: "crm-email-composer", label: "Email Composer", detail: "Compose follow-up email" },
+        { id: "crm-categories", label: "Categories", detail: "Add, remove, and manage categories" },
+        { id: "crm-settings", label: "Settings", detail: "Configure CRM defaults and rules" },
+      ],
+    },
+    {
+      id: "prayer",
+      label: "Prayer",
+      items: [
+        {
+          id: "prayer-dashboard",
+          label: "Prayer Dashboard",
+          detail: "Prayer request summary",
+          count: pendingPrayerCount,
+        },
+        {
+          id: "prayer-queue",
+          label: "Prayer Queue",
+          detail: "Review requests and mark prayed",
+          count: pendingPrayerCount,
+        },
+        { id: "prayer-settings", label: "Settings", detail: "Prayer workflow settings" },
+      ],
+    },
+    {
+      id: "testimonials",
+      label: "Testimonials",
+      items: [
+        {
+          id: "testimonial-dashboard",
+          label: "Dashboard",
+          detail: "Story moderation summary",
+          count: pendingTestimonials,
+        },
+        {
+          id: "testimonial-review",
+          label: "Review Queue",
+          detail: "Review, approve, and moderate stories",
+          count: pendingTestimonials,
+        },
+        {
+          id: "testimonial-displayed",
+          label: "Displayed",
+          detail: "Stories currently visible on the site",
+          count: visibleTestimonials,
+        },
+        { id: "testimonial-settings", label: "Settings", detail: "Display and moderation rules" },
+      ],
+    },
+    {
+      id: "communications",
+      label: "Communications",
+      items: [
+        {
+          id: "email-settings",
+          label: "Mail Settings",
+          detail: "SMTP, POP3, sender identity, mail tools",
+        },
+        { id: "email-tools", label: "Email Tools", detail: "Composer and delivery utilities" },
+      ],
+    },
+    {
+      id: "administration",
+      label: "Administration",
+      items: [
+        { id: "staff-dashboard", label: "Staff Dashboard", detail: "Account and security overview" },
+        {
+          id: "staff-accounts",
+          label: "Staff Accounts",
+          detail: "Users, roles, MFA policy, access control",
+          count: staffUsers.length,
+        },
+        { id: "staff-mfa", label: "MFA Management", detail: "MFA methods and policy controls" },
+      ],
+    },
+    {
+      id: "system",
+      label: "System",
+      items: [
+        {
+          id: "database-schema",
+          label: "Database",
+          detail: "Schema overview and production data model",
+        },
+      ],
+    },
+  ];
+
+  return (
+    <section className="staff-portal">
+      <div className="shell staff-portal__shell">
+        <div className="portal-layout">
+          <aside className="portal-sidebar" aria-label="Management portal navigation">
+            <div className="portal-sidebar__brand">
+              <img src="/assets/awd-logo.webp" alt="" width="1190" height="1322" />
+              <div>
+                <strong>Management</strong>
+                <span>{activeNavItem}</span>
+              </div>
+            </div>
+            <nav className="portal-sidebar__nav">
+              {portalNavigation.map((group) => (
+                <section key={group.label} className="portal-nav-group">
+                  <button
+                    className="portal-nav-parent"
+                    type="button"
+                    onClick={() => toggleMenu(group.id)}
+                    aria-expanded={Boolean(expandedMenus[group.id])}
+                  >
+                    <span>{group.label}</span>
+                    <ChevronDown aria-hidden="true" />
+                  </button>
+                  {expandedMenus[group.id] ? (
+                    <div className="portal-subnav">
+                      {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`portal-subnav__item ${activeTab === item.id ? "is-active" : ""}`}
+                      onClick={() => setActiveTab(item.id)}
+                    >
+                      <span>
+                        <strong>{item.label}</strong>
+                        <small>{item.detail}</small>
+                      </span>
+                      {typeof item.count === "number" ? <em>{item.count}</em> : null}
+                    </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              ))}
+            </nav>
+          </aside>
+
+          <div className="portal-viewer" aria-live="polite">
+            <header className="staff-portal__header">
+              <div>
+                <p className="section-label">Staff Portal</p>
+                <h1>Ministry Management</h1>
+                <p>
+                  Signed in as {session.name || session.email} / {getUserRoles(session).join(", ")}
+                </p>
+              </div>
+              <button className="button button--outline" type="button" onClick={logout}>
+                Logout
+              </button>
+            </header>
+
+            {activeTab === "dashboard" ? (
+              <div className="portal-panel portal-dashboard">
+                <div className="portal-panel__heading">
+                  <ShieldCheck />
+                  <div>
+                    <h2>Ministry Dashboard</h2>
+                    <p>One command center for prayer, people, stories, communication, and staff access.</p>
+                  </div>
+                </div>
+                <div className="portal-stats dashboard-stats">
+                  <button type="button" onClick={() => setActiveTab("prayer-queue")}>
+                    <HandHeart />
+                    <strong>{pendingPrayerCount}</strong>
+                    <span>Pending Prayer</span>
+                  </button>
+                  <button type="button" onClick={() => setActiveTab("testimonial-review")}>
+                    <MessageSquareQuote />
+                    <strong>{pendingTestimonials}</strong>
+                    <span>Testimonials to Review</span>
+                  </button>
+                  <button type="button" onClick={() => setActiveTab("crm-dashboard")}>
+                    <Inbox />
+                    <strong>{newContacts}</strong>
+                    <span>New Contacts</span>
+                  </button>
+                  <button type="button" onClick={() => setActiveTab("testimonial-displayed")}>
+                    <Eye />
+                    <strong>{visibleTestimonials}</strong>
+                    <span>Displayed Testimonials</span>
+                  </button>
+                </div>
+                <div className="dashboard-grid">
+                  <section className="dashboard-focus">
+                    <div>
+                      <p className="section-label">Priority Work</p>
+                      <h3>Today&apos;s ministry queues</h3>
+                    </div>
+                    {[
+                      ["Prayer requests awaiting review", pendingPrayerCount, "prayer-queue"],
+                      ["New contact requests", newContacts, "crm-dashboard"],
+                      ["Testimonials waiting approval", pendingTestimonials, "testimonial-review"],
+                      ["Staff accounts in system", staffUsers.length, "staff-accounts"],
+                    ].map(([label, value, target]) => (
+                      <button key={label} type="button" onClick={() => setActiveTab(target)}>
+                        <span>{label}</span>
+                        <strong>{value}</strong>
+                      </button>
+                    ))}
+                  </section>
+                  <section className="dashboard-focus">
+                    <div>
+                      <p className="section-label">Quick Actions</p>
+                      <h3>Jump into the work</h3>
+                    </div>
+                    {[
+                      ["Open CRM Contacts", "Manage contact records, categories, and follow-up.", "crm-dashboard"],
+                      ["Review Prayer Queue", "Mark requests as pending prayer or prayed.", "prayer-queue"],
+                      ["Moderate Testimonials", "Approve stories and display them on the site.", "testimonial-review"],
+                      ["Manage Staff & MFA", "Create users, assign roles, and enforce MFA.", "staff-accounts"],
+                      ["Configure Mail", "Update SMTP and sender settings.", "email-settings"],
+                      ["View Database Design", "Inspect the production-ready schema.", "database-schema"],
+                    ].map(([label, detail, target]) => (
+                      <button key={label} type="button" onClick={() => setActiveTab(target)}>
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{detail}</small>
+                        </span>
+                        <ArrowRight size={18} />
+                      </button>
+                    ))}
+                  </section>
+                </div>
+              </div>
+            ) : null}
+
+        {activeTab === "crm-dashboard" ? (
+          <div className="portal-panel portal-dashboard">
+            <div className="portal-panel__heading">
+              <LayoutDashboard />
+              <div>
+                <h2>CRM Dashboard</h2>
+                <p>Contact pipeline health, follow-up status, and active contact list.</p>
+              </div>
+            </div>
+            <div className="portal-stats dashboard-stats">
+              <button type="button" onClick={() => setContactStatusFilter("New")}>
+                <Inbox />
+                <strong>{newContacts}</strong>
+                <span>New Contacts</span>
+              </button>
+              <button type="button" onClick={() => setContactStatusFilter("New")}>
+                <Mail />
+                <strong>{notContactedContacts}</strong>
+                <span>Not Contacted</span>
+              </button>
+              <button type="button" onClick={() => setContactStatusFilter("In Conversation")}>
+                <CheckCircle2 />
+                <strong>{contactedContacts}</strong>
+                <span>Contacted</span>
+              </button>
+              <button type="button" onClick={() => setContactStatusFilter("Closed")}>
+                <Eye />
+                <strong>{closedContacts}</strong>
+                <span>Closed Contacts</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "crm-new-contact" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <UserPlus />
+              <div>
+                <h2>New Contact</h2>
+                <p>Create a contact record using the configured CRM defaults.</p>
+              </div>
+            </div>
+            <button className="button button--gold" type="button" onClick={createContactRecord}>
+              <Plus size={18} /> Create New Contact Record
+            </button>
+            {selectedContact ? (
+              <section className="crm-profile crm-profile--standalone">
+                <header>
+                  <div>
+                    <p className="section-label">New Contact Draft</p>
+                    <h3>{selectedContact.name}</h3>
+                    <p>{selectedContact.email || "No email added yet"}</p>
+                  </div>
+                  <StatusBadge>{selectedContact.status}</StatusBadge>
+                </header>
+                <div className="portal-form">
+                  <label>
+                    Name
+                    <input
+                      value={selectedContact.name}
+                      onChange={(event) =>
+                        updateContact(selectedContact.id, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={selectedContact.email}
+                      onChange={(event) =>
+                        updateContact(selectedContact.id, { email: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <input
+                      value={selectedContact.phone || ""}
+                      onChange={(event) =>
+                        updateContact(selectedContact.id, { phone: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Category
+                    <select
+                      value={selectedContact.category || selectedContact.reason}
+                      onChange={(event) =>
+                        updateContact(selectedContact.id, { category: event.target.value })
+                      }
+                    >
+                      {managedContactCategories.map((category) => (
+                        <option key={category}>{category}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-span">
+                    Message
+                    <textarea
+                      value={selectedContact.message}
+                      onChange={(event) =>
+                        updateContact(selectedContact.id, { message: event.target.value })
+                      }
+                      rows="5"
+                    />
+                  </label>
+                </div>
+              </section>
+            ) : (
+              <EmptyPortalState>Create a contact to begin editing the record.</EmptyPortalState>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === "crm-import" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <FileUp />
+              <div>
+                <h2>Import Contacts</h2>
+                <p>Bring in contact exports from Google Contacts or Outlook without replacing your CRM data.</p>
+              </div>
+            </div>
+            <div className="crm-import-grid">
+              <section className="crm-import-card">
+                <p className="section-label">CSV Source</p>
+                <h3>Upload a contact export</h3>
+                <div className="portal-form">
+                  <label>
+                    Export Type
+                    <select
+                      value={csvImportSource}
+                      onChange={(event) => setCsvImportSource(event.target.value)}
+                    >
+                      {csvImportSources.map((source) => (
+                        <option key={source}>{source}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="crm-file-drop">
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={importContactsCsv}
+                      disabled={csvImportBusy}
+                    />
+                    <span>
+                      <FileUp size={24} />
+                      <strong>{csvImportBusy ? "Importing..." : "Choose CSV File"}</strong>
+                      <small>Google Contacts CSV or Outlook CSV export</small>
+                    </span>
+                  </label>
+                </div>
+                {csvImportNotice ? <p className="form-confirmation">{csvImportNotice}</p> : null}
+              </section>
+              <section className="crm-import-card">
+                <p className="section-label">Supported Fields</p>
+                <h3>Google and Outlook ready</h3>
+                <ul className="crm-import-list">
+                  <li>Name, Display Name, First Name, Given Name, Last Name, Surname</li>
+                  <li>Email, E-mail Address, Primary Email, Home E-mail, Work E-mail</li>
+                  <li>Mobile Phone, Business Phone, Home Phone, Phone 1 - Value</li>
+                  <li>Categories, Labels, Group Membership, Notes, Comments</li>
+                </ul>
+                <div className="database-cards database-cards--compact">
+                  <article>
+                    <strong>Duplicate Control</strong>
+                    <span>Matches existing contacts by email or phone before importing.</span>
+                  </article>
+                  <article>
+                    <strong>Category Sync</strong>
+                    <span>New CSV categories are added to the CRM category manager.</span>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "crm-email-composer" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Mail />
+              <div>
+                <h2>CRM Email Composer</h2>
+                <p>Select a contact, draft a follow-up, and prepare the message history.</p>
+              </div>
+            </div>
+            <form className="portal-form" onSubmit={queueEmail}>
+              <label>
+                Contact
+                <select
+                  value={composer.contactId || selectedContactId}
+                  onChange={(event) => {
+                    const contact = contacts.find((item) => item.id === event.target.value);
+                    if (contact) selectContactForEmail(contact);
+                  }}
+                >
+                  <option value="">Choose a contact</option>
+                  {contacts.map((contact) => (
+                    <option key={contact.id} value={contact.id}>
+                      {contact.name} / {contact.email || "No email"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Subject
+                <input
+                  value={composer.subject}
+                  onChange={(event) =>
+                    setComposer((current) => ({ ...current, subject: event.target.value }))
+                  }
+                  required
+                  placeholder="Email subject"
+                />
+              </label>
+              <label className="form-span">
+                Message
+                <textarea
+                  value={composer.message}
+                  onChange={(event) =>
+                    setComposer((current) => ({ ...current, message: event.target.value }))
+                  }
+                  required
+                  rows="10"
+                  placeholder="Write the follow-up email..."
+                />
+              </label>
+              <button className="button button--gold" type="submit">
+                <Send size={18} /> Send Email
+              </button>
+              {mailNotice ? <p className="form-confirmation">{mailNotice}</p> : null}
+            </form>
+          </div>
+        ) : null}
+
+        {activeTab === "crm-categories" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Tags />
+              <div>
+                <h2>CRM Categories</h2>
+                <p>Add, remove, and organize the categories used to browse contacts.</p>
+              </div>
+            </div>
+            <div className="crm-category-manager crm-category-manager--panel">
+              <label>
+                <span>New Category</span>
+                <input
+                  value={categoryDraft}
+                  onChange={(event) => setCategoryDraft(event.target.value)}
+                  placeholder="Example: Event Follow Up"
+                />
+              </label>
+              <button className="button button--outline" type="button" onClick={addContactCategory}>
+                <Plus size={17} /> Add Category
+              </button>
+            </div>
+            <div className="category-list">
+              {managedContactCategories.map((category) => (
+                <article key={category}>
+                  <div>
+                    <strong>{category}</strong>
+                    <span>
+                      {contacts.filter((contact) => (contact.category || contact.reason) === category).length} contacts
+                    </span>
+                  </div>
+                  <button
+                    className="button button--outline"
+                    type="button"
+                    disabled={category === "General Contact"}
+                    onClick={() => removeContactCategory(category)}
+                  >
+                    Remove
+                  </button>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "crm-settings" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Shield />
+              <div>
+                <h2>CRM Settings</h2>
+                <p>Configure contact defaults, intake rules, ownership, and notification behavior.</p>
+              </div>
+            </div>
+            <div className="portal-form">
+              <label>
+                Default Status
+                <select
+                  value={crmSettings.defaultStatus}
+                  onChange={(event) => updateCrmSetting("defaultStatus", event.target.value)}
+                >
+                  {contactStatuses.map((status) => (
+                    <option key={status}>{status}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Default Priority
+                <select
+                  value={crmSettings.defaultPriority}
+                  onChange={(event) => updateCrmSetting("defaultPriority", event.target.value)}
+                >
+                  {contactPriorities.map((priority) => (
+                    <option key={priority}>{priority}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Default Owner
+                <input
+                  value={crmSettings.defaultOwner}
+                  onChange={(event) => updateCrmSetting("defaultOwner", event.target.value)}
+                />
+              </label>
+              <label>
+                Auto Follow-Up Days
+                <input
+                  type="number"
+                  min="0"
+                  value={crmSettings.autoFollowUpDays}
+                  onChange={(event) => updateCrmSetting("autoFollowUpDays", event.target.value)}
+                />
+              </label>
+              <label className="checkbox-line">
+                <input
+                  type="checkbox"
+                  checked={Boolean(crmSettings.requireCategory)}
+                  onChange={(event) => updateCrmSetting("requireCategory", event.target.checked)}
+                />
+                Require a category for every contact.
+              </label>
+              <label className="checkbox-line">
+                <input
+                  type="checkbox"
+                  checked={Boolean(crmSettings.requireNextFollowUp)}
+                  onChange={(event) => updateCrmSetting("requireNextFollowUp", event.target.checked)}
+                />
+                Require next follow-up date before closing.
+              </label>
+              <label className="checkbox-line">
+                <input
+                  type="checkbox"
+                  checked={Boolean(crmSettings.notifyOnNewContact)}
+                  onChange={(event) => updateCrmSetting("notifyOnNewContact", event.target.checked)}
+                />
+                Notify staff when a new contact arrives.
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "prayer-dashboard" ? (
+          <div className="portal-panel portal-dashboard">
+            <div className="portal-panel__heading">
+              <HandHeart />
+              <div>
+                <h2>Prayer Dashboard</h2>
+                <p>Prayer request intake, confidential requests, and completion status.</p>
+              </div>
+            </div>
+            <div className="portal-stats dashboard-stats">
+              <button type="button" onClick={() => setActiveTab("prayer-queue")}>
+                <HandHeart />
+                <strong>{pendingPrayerCount}</strong>
+                <span>Pending Prayer</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("prayer-queue")}>
+                <Shield />
+                <strong>{prayerRequests.filter((request) => request.isConfidential).length}</strong>
+                <span>Confidential</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("prayer-queue")}>
+                <CheckCircle2 />
+                <strong>{prayerRequests.filter((request) => request.status === "We have Prayed").length}</strong>
+                <span>We Have Prayed</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "prayer-settings" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Shield />
+              <div>
+                <h2>Prayer Settings</h2>
+                <p>Configure prayer queue behavior and ministry review expectations.</p>
+              </div>
+            </div>
+            <div className="database-cards">
+              <article><strong>Confidential Requests</strong><p>Confidential submissions stay visible only inside the staff portal queue.</p></article>
+              <article><strong>Status Workflow</strong><p>Requests move from Pending Prayer to We have Prayed.</p></article>
+              <article><strong>Ministry Notes</strong><p>Staff can add private notes for context and follow-up.</p></article>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "testimonial-dashboard" ? (
+          <div className="portal-panel portal-dashboard">
+            <div className="portal-panel__heading">
+              <MessageSquareQuote />
+              <div>
+                <h2>Testimonial Dashboard</h2>
+                <p>Moderation, approval, and public display status for submitted stories.</p>
+              </div>
+            </div>
+            <div className="portal-stats dashboard-stats">
+              <button type="button" onClick={() => setActiveTab("testimonial-review")}>
+                <MessageSquareQuote />
+                <strong>{pendingTestimonials}</strong>
+                <span>Pending Review</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("testimonial-displayed")}>
+                <Eye />
+                <strong>{visibleTestimonials}</strong>
+                <span>Displayed</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("testimonial-review")}>
+                <CheckCircle2 />
+                <strong>{testimonials.filter((testimonial) => testimonial.status === "Approved").length}</strong>
+                <span>Approved</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "testimonial-displayed" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Eye />
+              <div>
+                <h2>Displayed Testimonials</h2>
+                <p>Approved stories currently marked for public display.</p>
+              </div>
+            </div>
+            <div className="testimonial-list testimonial-list--portal">
+              {testimonials
+                .filter((testimonial) => testimonial.status === "Approved" && testimonial.displayOnSite)
+                .map((testimonial, index) => (
+                  <article key={testimonial.id} className={`testimonial-bubble testimonial-bubble--${(index % 3) + 1}`}>
+                    <blockquote>“{testimonial.quote}”</blockquote>
+                    <div className="testimonial-bubble__person">
+                      <span>{testimonial.name.slice(0, 1)}</span>
+                      <div>
+                        <strong>{testimonial.name}</strong>
+                        <small>{testimonial.ministry}</small>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "testimonial-settings" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Shield />
+              <div>
+                <h2>Testimonial Settings</h2>
+                <p>Moderation rules for review, approval, and public display.</p>
+              </div>
+            </div>
+            <div className="database-cards">
+              <article><strong>Approval Required</strong><p>Testimonials must be approved before they can display publicly.</p></article>
+              <article><strong>Display On Site</strong><p>Approved testimonials only show when Display On Site is checked.</p></article>
+              <article><strong>Review Notes</strong><p>Staff can retain internal moderation notes per submission.</p></article>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "staff-dashboard" ? (
+          <div className="portal-panel portal-dashboard">
+            <div className="portal-panel__heading">
+              <UserCog />
+              <div>
+                <h2>Staff Dashboard</h2>
+                <p>Account health, role assignment, and MFA enrollment overview.</p>
+              </div>
+            </div>
+            <div className="portal-stats dashboard-stats">
+              <button type="button" onClick={() => setActiveTab("staff-accounts")}>
+                <Users />
+                <strong>{staffUsers.length}</strong>
+                <span>Staff Accounts</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("staff-mfa")}>
+                <ShieldCheck />
+                <strong>{staffUsers.filter((user) => user.mfaEnabled).length}</strong>
+                <span>MFA Enrolled</span>
+              </button>
+              <button type="button" onClick={() => setActiveTab("staff-accounts")}>
+                <Lock />
+                <strong>{staffUsers.filter((user) => user.isActive === false).length}</strong>
+                <span>Inactive</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "prayer-queue" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <ClipboardList />
+              <div>
+                <h2>Prayer Queue</h2>
+                <p>Review submitted prayer requests from a queue and update the selected record.</p>
+              </div>
+            </div>
+            {prayerRequests.length ? (
+              <div className="management-grid">
+                <div className="record-list" aria-label="Prayer request queue">
+                  <div className="record-list__header record-list__header--prayer">
+                    <span>ID</span>
+                    <span>Name</span>
+                    <span>Submitted</span>
+                    <span>Contact</span>
+                    <span>Status</span>
+                  </div>
+                  {prayerRequests.map((request) => (
+                    <button
+                      key={request.id}
+                      type="button"
+                      className={`prayer-row ${selectedPrayer?.id === request.id ? "is-active" : ""}`}
+                      onClick={() => setSelectedPrayerId(request.id)}
+                    >
+                      <span>#{request.id.replace("prayer-", "").slice(0, 6)}</span>
+                      <strong>{request.name}</strong>
+                      <time>{formatDate(request.submittedAt)}</time>
+                      <em>{request.email || request.phone || "Confidential"}</em>
+                      <StatusBadge>{request.status}</StatusBadge>
+                    </button>
+                  ))}
+                </div>
+                {selectedPrayer ? (
+                  <article className="record-workspace">
+                    <header>
+                      <div>
+                        <p className="section-label">Prayer Request</p>
+                        <h3>{selectedPrayer.name}</h3>
+                        <p>{selectedPrayer.email || selectedPrayer.phone || "No public contact"}</p>
+                      </div>
+                      <StatusBadge>{selectedPrayer.status}</StatusBadge>
+                    </header>
+                    <blockquote>“{selectedPrayer.request}”</blockquote>
+                    <div className="portal-record__meta">
+                      {selectedPrayer.email ? <span>{selectedPrayer.email}</span> : null}
+                      {selectedPrayer.phone ? <span>{selectedPrayer.phone}</span> : null}
+                      {selectedPrayer.isConfidential ? <span>Confidential</span> : null}
+                      <span>{formatDate(selectedPrayer.submittedAt)}</span>
+                    </div>
+                    <div className="record-workspace__form">
+                      <label>
+                        Prayer Status
+                        <select
+                          value={selectedPrayer.status}
+                          onChange={(event) =>
+                            updatePrayer(selectedPrayer.id, { status: event.target.value })
+                          }
+                        >
+                          {prayerStatuses.map((status) => (
+                            <option key={status}>{status}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="form-span">
+                        Ministry Notes
+                        <textarea
+                          value={selectedPrayer.notes || ""}
+                          onChange={(event) =>
+                            updatePrayer(selectedPrayer.id, { notes: event.target.value })
+                          }
+                          rows="6"
+                        />
+                      </label>
+                    </div>
+                  </article>
+                ) : (
+                  <EmptyPortalState>Select a prayer request to view details.</EmptyPortalState>
+                )}
+              </div>
+            ) : (
+              <EmptyPortalState>No prayer requests have been submitted yet.</EmptyPortalState>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === "testimonial-review" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <MessageSquareQuote />
+              <div>
+                <h2>Testimonial Review</h2>
+                <p>Start from the review list, inspect the record, and approve in bulk.</p>
+              </div>
+            </div>
+            <div className="portal-toolbar">
+              <input placeholder="Name, email, or ministry" aria-label="Search testimonials" />
+              <select aria-label="Bulk testimonial actions">
+                <option>Bulk Actions</option>
+                <option>Approve + Display</option>
+              </select>
+              <span>{selectedTestimonialIds.length} selected</span>
+              <button
+                className="button button--gold"
+                type="button"
+                disabled={!selectedTestimonialIds.length}
+                onClick={bulkApproveTestimonials}
+              >
+                <CheckCircle2 size={18} /> Bulk Approve + Display
+              </button>
+            </div>
+            <div className="management-grid">
+              <div className="record-list" aria-label="Testimonial review list">
+                <div className="record-list__header record-list__header--testimonials">
+                  <span></span>
+                  <span>Name</span>
+                  <span>Ministry</span>
+                  <span>Submitted</span>
+                  <span>Status</span>
+                </div>
+                {testimonials.map((testimonial) => (
+                  <article
+                    key={testimonial.id}
+                    className={`record-list__item ${
+                      selectedTestimonial?.id === testimonial.id ? "is-active" : ""
+                    }`}
+                  >
+                    <label className="record-list__check" aria-label={`Select ${testimonial.name}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTestimonialIds.includes(testimonial.id)}
+                        onChange={() => toggleTestimonialSelection(testimonial.id)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTestimonialId(testimonial.id)}
+                    >
+                      <strong>{testimonial.name}</strong>
+                    </button>
+                    <span>{testimonial.ministry}</span>
+                    <small>{formatDate(testimonial.submittedAt)}</small>
+                    <StatusBadge>{testimonial.status}</StatusBadge>
+                  </article>
+                ))}
+              </div>
+              {selectedTestimonial ? (
+                <article className="record-workspace">
+                  <header>
+                    <div>
+                      <p className="section-label">Testimonial Record</p>
+                      <h3>{selectedTestimonial.name}</h3>
+                      <p>{selectedTestimonial.email}</p>
+                    </div>
+                    <StatusBadge>{selectedTestimonial.status}</StatusBadge>
+                  </header>
+                  <blockquote>“{selectedTestimonial.quote}”</blockquote>
+                  <div className="portal-record__meta">
+                    <span>{selectedTestimonial.ministry}</span>
+                    {selectedTestimonial.city ? <span>{selectedTestimonial.city}</span> : null}
+                    <span>{formatDate(selectedTestimonial.submittedAt)}</span>
+                  </div>
+                  <div className="record-workspace__form">
+                    <label>
+                      Review Status
+                      <select
+                        value={selectedTestimonial.status}
+                        onChange={(event) =>
+                          updateTestimonial(selectedTestimonial.id, {
+                            status: event.target.value,
+                            displayOnSite:
+                              event.target.value === "Approved"
+                                ? selectedTestimonial.displayOnSite
+                                : false,
+                          })
+                        }
+                      >
+                        {testimonialStatuses.map((status) => (
+                          <option key={status}>{status}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedTestimonial.displayOnSite)}
+                        disabled={selectedTestimonial.status !== "Approved"}
+                        onChange={(event) =>
+                          updateTestimonial(selectedTestimonial.id, {
+                            displayOnSite: event.target.checked,
+                          })
+                        }
+                      />
+                      Display On Site
+                    </label>
+                    <label className="form-span">
+                      Review Notes
+                      <textarea
+                        value={selectedTestimonial.notes || ""}
+                        onChange={(event) =>
+                          updateTestimonial(selectedTestimonial.id, {
+                            notes: event.target.value,
+                          })
+                        }
+                        rows="5"
+                      />
+                    </label>
+                  </div>
+                </article>
+              ) : (
+                <EmptyPortalState>Select a testimonial to review.</EmptyPortalState>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "crm-dashboard" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Inbox />
+              <div>
+                <h2>Ministry CRM</h2>
+                <p>Work active contacts from a list view, manage details, and compose follow-up.</p>
+              </div>
+            </div>
+            <div className="crm-shell">
+              <aside className="crm-list">
+                <div className="crm-list__header">
+                  <div>
+                    <strong>Active Contacts</strong>
+                    <small>{activeContacts.length} records / {contactStatusFilter}</small>
+                  </div>
+                  <button
+                    className="button button--outline"
+                    type="button"
+                    onClick={createContactRecord}
+                  >
+                    <Plus size={18} /> New Contact
+                  </button>
+                </div>
+                <div className="crm-filters">
+                  <input
+                    value={contactSearch}
+                    onChange={(event) => setContactSearch(event.target.value)}
+                    placeholder="Name, Email, or Contact ID"
+                    aria-label="Search contacts"
+                  />
+                  <select
+                    aria-label="Contact status filter"
+                    value={contactStatusFilter}
+                    onChange={(event) => setContactStatusFilter(event.target.value)}
+                  >
+                    <option>Active</option>
+                    <option>All Contacts</option>
+                    {contactStatuses.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Contact category filter"
+                    value={contactCategoryFilter}
+                    onChange={(event) => setContactCategoryFilter(event.target.value)}
+                  >
+                    <option>All Categories</option>
+                    {managedContactCategories.map((category) => (
+                      <option key={category}>{category}</option>
+                    ))}
+                  </select>
+                  <button className="button button--outline" type="button">
+                    Apply
+                  </button>
+                </div>
+                <div className="crm-category-manager">
+                  <label>
+                    <span>New Category</span>
+                    <input
+                      value={categoryDraft}
+                      onChange={(event) => setCategoryDraft(event.target.value)}
+                      placeholder="Example: Event Follow Up"
+                    />
+                  </label>
+                  <button className="button button--outline" type="button" onClick={addContactCategory}>
+                    <Plus size={17} /> Add Category
+                  </button>
+                </div>
+                <div className="crm-table-head">
+                  <span>ID</span>
+                  <span>Name</span>
+                  <span>Category</span>
+                  <span>Created At</span>
+                  <span>Email</span>
+                  <span>Next Follow Up</span>
+                  <span>Priority</span>
+                  <span>Status</span>
+                </div>
+                <div className="crm-list__items">
+                  {activeContacts.length ? (
+                    activeContacts.map((contact) => (
+                      <button
+                        key={contact.id}
+                        type="button"
+                        className={`crm-contact-row ${
+                          selectedContact?.id === contact.id ? "is-active" : ""
+                        }`}
+                        onClick={() => setSelectedContactId(contact.id)}
+                      >
+                        <span>#{contact.id.replace("contact-", "").slice(0, 6)}</span>
+                        <strong>{contact.name}</strong>
+                        <small>{contact.category || contact.reason}</small>
+                        <time>{formatDate(contact.submittedAt)}</time>
+                        <em>{contact.email}</em>
+                        <span>{contact.nextFollowUp || "Not scheduled"}</span>
+                        <span>{contact.priority || "Normal"}</span>
+                        <StatusBadge>{contact.status}</StatusBadge>
+                      </button>
+                    ))
+                  ) : (
+                    <EmptyPortalState>No active contacts match this view.</EmptyPortalState>
+                  )}
+                </div>
+              </aside>
+
+              {selectedContact ? (
+                <div className="crm-workspace">
+                  <section className="crm-profile">
+                    <header>
+                      <div>
+                        <p className="section-label">Contact Management</p>
+                        <h3>{selectedContact.name}</h3>
+                        <p>{selectedContact.email}</p>
+                      </div>
+                      <StatusBadge>{selectedContact.status}</StatusBadge>
+                    </header>
+                    <div className="portal-form">
+                      <label>
+                        Name
+                        <input
+                          value={selectedContact.name}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { name: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Email
+                        <input
+                          type="email"
+                          value={selectedContact.email}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { email: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Phone
+                        <input
+                          value={selectedContact.phone || ""}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { phone: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Category
+                        <select
+                          value={selectedContact.category || selectedContact.reason}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { category: event.target.value })
+                          }
+                        >
+                          {managedContactCategories.map((category) => (
+                            <option key={category}>{category}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Contact Reason
+                        <select
+                          value={selectedContact.reason}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { reason: event.target.value })
+                          }
+                        >
+                          <option>General Contact</option>
+                          <option>Volunteer</option>
+                          <option>Partnership</option>
+                          <option>Brothers Keepers</option>
+                          <option>Daughters of the King</option>
+                          <option>Giving</option>
+                        </select>
+                      </label>
+                      <label>
+                        Status
+                        <select
+                          value={selectedContact.status}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { status: event.target.value })
+                          }
+                        >
+                          {contactStatuses.map((status) => (
+                            <option key={status}>{status}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Priority
+                        <select
+                          value={selectedContact.priority || "Normal"}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { priority: event.target.value })
+                          }
+                        >
+                          {contactPriorities.map((priority) => (
+                            <option key={priority}>{priority}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Assigned To
+                        <input
+                          value={selectedContact.assignedTo || ""}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { assignedTo: event.target.value })
+                          }
+                          placeholder="Staff owner"
+                        />
+                      </label>
+                      <label>
+                        Next Follow Up
+                        <input
+                          type="date"
+                          value={selectedContact.nextFollowUp || ""}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { nextFollowUp: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Submitted
+                        <input value={formatDate(selectedContact.submittedAt)} readOnly />
+                      </label>
+                      <label className="form-span">
+                        Tags
+                        <input
+                          value={(selectedContact.tags || []).join(", ")}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, {
+                              tags: event.target.value
+                                .split(",")
+                                .map((tag) => tag.trim())
+                                .filter(Boolean),
+                            })
+                          }
+                          placeholder="Volunteer, Outreach, Follow Up"
+                        />
+                      </label>
+                      <label className="form-span">
+                        Original Message
+                        <textarea
+                          value={selectedContact.message}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { message: event.target.value })
+                          }
+                          rows="4"
+                        />
+                      </label>
+                      <label className="form-span">
+                        CRM Notes
+                        <textarea
+                          value={selectedContact.notes || ""}
+                          onChange={(event) =>
+                            updateContact(selectedContact.id, { notes: event.target.value })
+                          }
+                          rows="5"
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="crm-compose">
+                    <header>
+                      <div>
+                        <p className="section-label">Email Composer</p>
+                        <h3>Follow up with {selectedContact.name}</h3>
+                      </div>
+                      <button
+                        className="button button--outline"
+                        type="button"
+                        onClick={() => selectContactForEmail(selectedContact)}
+                      >
+                        <Mail size={18} /> Draft Template
+                      </button>
+                    </header>
+                    <form className="portal-form" onSubmit={queueEmail}>
+                      <label>
+                        To
+                        <input value={selectedContact.email} readOnly />
+                      </label>
+                      <label>
+                        Subject
+                        <input
+                          value={composer.contactId === selectedContact.id ? composer.subject : ""}
+                          onChange={(event) =>
+                            setComposer((current) => ({
+                              ...current,
+                              contactId: selectedContact.id,
+                              subject: event.target.value,
+                            }))
+                          }
+                          required
+                          placeholder="Email subject"
+                        />
+                      </label>
+                      <label className="form-span">
+                        Message
+                        <textarea
+                          value={composer.contactId === selectedContact.id ? composer.message : ""}
+                          onChange={(event) =>
+                            setComposer((current) => ({
+                              ...current,
+                              contactId: selectedContact.id,
+                              message: event.target.value,
+                            }))
+                          }
+                          required
+                          rows="8"
+                          placeholder="Write the follow-up email..."
+                        />
+                      </label>
+                      <button className="button button--gold" type="submit">
+                        <Send size={18} /> Send Email
+                      </button>
+                      {mailNotice ? <p className="form-confirmation">{mailNotice}</p> : null}
+                    </form>
+                    <div className="email-history">
+                      <strong>Email History</strong>
+                      {(selectedContact.emailHistory || []).length ? (
+                        selectedContact.emailHistory.map((email) => (
+                          <article key={email.id}>
+                            <span>{email.status}</span>
+                            <p>{email.subject}</p>
+                            <small>{formatDate(email.preparedAt)}</small>
+                          </article>
+                        ))
+                      ) : (
+                        <p>No email history for this contact yet.</p>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              ) : (
+                <div className="selection-empty">
+                  <Inbox />
+                  <h3>Select a contact record</h3>
+                  <p>
+                    Click a row in the active contacts list to open contact management,
+                    notes, status updates, email composer, and history.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {["staff-accounts", "staff-mfa"].includes(activeTab) ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <UserCog />
+              <div>
+                <h2>Staff Account Management</h2>
+                <p>Manage your account, MFA registration, and staff permissions.</p>
+              </div>
+            </div>
+            <div className="account-suite">
+              <section className="account-card">
+                <header>
+                  <div>
+                    <p className="section-label">My Account</p>
+                    <h3>{currentStaffUser?.name || session.name || "Staff User"}</h3>
+                    <p>{currentStaffUser?.email || session.email}</p>
+                  </div>
+                  <StatusBadge>{getUserRoles(currentStaffUser).join(" / ")}</StatusBadge>
+                </header>
+                <div className="portal-form">
+                  <label>
+                    Name
+                    <input
+                      value={currentStaffUser?.name || ""}
+                      onChange={(event) =>
+                        currentStaffUser?.id &&
+                        updateStaffUser(currentStaffUser.id, { name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={currentStaffUser?.email || ""}
+                      onChange={(event) =>
+                        currentStaffUser?.id &&
+                        updateStaffUser(currentStaffUser.id, { email: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={currentStaffUser?.password || ""}
+                      onChange={(event) =>
+                        currentStaffUser?.id &&
+                        updateStaffUser(currentStaffUser.id, { password: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Permission Roles
+                    <input value={getUserRoles(currentStaffUser).join(", ")} readOnly />
+                  </label>
+                </div>
+                <div className="mfa-section">
+                  <div>
+                    <p className="section-label">Multi-Factor Authentication</p>
+                    <h4>MFA Methods</h4>
+                    <p>
+                      Register one or more MFA methods for staff sign-in. Production
+                      enrollment should be completed through the backend identity provider.
+                    </p>
+                  </div>
+                  <div className="mfa-methods">
+                    {mfaMethodOptions.map(({ id, label, body, icon: Icon }) => (
+                      <label key={id} className="mfa-method">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(currentStaffUser?.mfaMethods?.[id])}
+                          onChange={(event) =>
+                            currentStaffUser?.id &&
+                            toggleMfaMethod(currentStaffUser.id, id, event.target.checked)
+                          }
+                        />
+                        <Icon />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{body}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              {isUserAdmin ? (
+                <section className="account-card">
+                  <header>
+                    <div>
+                      <p className="section-label">Create User</p>
+                      <h3>New Staff Account</h3>
+                      <p>Create staff accounts, assign multiple roles, and require MFA enrollment.</p>
+                    </div>
+                    <StatusBadge>Admin Only</StatusBadge>
+                  </header>
+                  <form className="portal-form" onSubmit={createStaffAccount}>
+                    <label>
+                      Name
+                      <input
+                        value={newStaffForm.name}
+                        onChange={(event) => updateNewStaffForm({ name: event.target.value })}
+                        required
+                        placeholder="Staff member name"
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={newStaffForm.email}
+                        onChange={(event) => updateNewStaffForm({ email: event.target.value })}
+                        required
+                        placeholder="staff@example.com"
+                      />
+                    </label>
+                    <label>
+                      Temporary Password
+                      <input
+                        value={newStaffForm.password}
+                        onChange={(event) => updateNewStaffForm({ password: event.target.value })}
+                        required
+                      />
+                    </label>
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={newStaffForm.mfaRequired}
+                        disabled={newStaffForm.roles.includes("Administrator")}
+                        onChange={(event) =>
+                          updateNewStaffForm({ mfaRequired: event.target.checked })
+                        }
+                      />
+                      Require MFA on first login
+                    </label>
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={newStaffForm.showOnLeadership}
+                        onChange={(event) =>
+                          updateNewStaffForm({ showOnLeadership: event.target.checked })
+                        }
+                      />
+                      Show on Leadership page
+                    </label>
+                    <div className="role-picker form-span">
+                      {staffRoles.map((role) => (
+                        <label key={role}>
+                          <input
+                            type="checkbox"
+                            checked={newStaffForm.roles.includes(role)}
+                            onChange={(event) => toggleNewStaffRole(role, event.target.checked)}
+                          />
+                          <span>{role}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button className="button button--gold" type="submit">
+                      <Plus size={18} /> Create Staff Account
+                    </button>
+                  </form>
+                </section>
+              ) : null}
+
+              <section className="account-card account-card--wide">
+                <header>
+                  <div>
+                    <p className="section-label">User Administration</p>
+                    <h3>Staff Directory</h3>
+                    <p>
+                      {isUserAdmin
+                        ? "Admins and User Admins can create users, deactivate accounts, and manage role assignments."
+                        : "Only User Admins can change permissions."}
+                    </p>
+                  </div>
+                  <StatusBadge>{isUserAdmin ? "Admin Access" : "Read Only"}</StatusBadge>
+                </header>
+                <div className="staff-table">
+                  <div className="staff-table__head">
+                    <span>Name</span>
+                    <span>Email</span>
+                    <span>Roles</span>
+                    <span>Leadership</span>
+                    <span>MFA</span>
+                    <span>Status</span>
+                  </div>
+                  {staffUsers.length ? (
+                    staffUsers.map((user) => (
+                      <article
+                        key={user.id}
+                        className={`staff-row ${
+                          selectedStaffUser?.id === user.id ? "is-active" : ""
+                        }`}
+                        onClick={() => setSelectedStaffId(user.id)}
+                      >
+                        <strong>{user.name}</strong>
+                        <span>{user.email}</span>
+                        <span>{getUserRoles(user).join(", ")}</span>
+                        <span>{shouldShowOnLeadership(user) ? "Visible" : "Hidden"}</span>
+                        <span>
+                          {shouldRequireUserMfa(user, mfaPolicy)
+                            ? user.mfaEnabled ||
+                              Object.values(user.mfaMethods || {}).some(Boolean)
+                              ? "Enrolled"
+                              : "Required"
+                            : "Not Required"}
+                        </span>
+                        <label className="checkbox-line">
+                          <input
+                            type="checkbox"
+                            checked={user.isActive !== false}
+                            disabled={!isUserAdmin}
+                            onChange={(event) =>
+                              updateStaffUser(user.id, { isActive: event.target.checked })
+                            }
+                          />
+                          Active
+                        </label>
+                      </article>
+                    ))
+                  ) : (
+                  <EmptyPortalState>No staff users have been created yet.</EmptyPortalState>
+                  )}
+                </div>
+              </section>
+
+              <section className="account-card">
+                <header>
+                  <div>
+                    <p className="section-label">Selected User</p>
+                    <h3>{selectedStaffUser?.name || "Select Staff"}</h3>
+                    <p>{selectedStaffUser?.email || "Choose a staff row to manage."}</p>
+                  </div>
+                  {selectedStaffUser ? (
+                    <StatusBadge>
+                      {selectedStaffUser.isActive === false ? "Inactive" : "Active"}
+                    </StatusBadge>
+                  ) : null}
+                </header>
+                {selectedStaffUser ? (
+                  <>
+                    <div className="portal-form">
+                      <label>
+                        Name
+                        <input
+                          value={selectedStaffUser.name || ""}
+                          disabled={!isUserAdmin}
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              name: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Email
+                        <input
+                          type="email"
+                          value={selectedStaffUser.email || ""}
+                          disabled={!isUserAdmin}
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              email: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Temporary Password
+                        <input
+                          value={selectedStaffUser.password || ""}
+                          disabled={!isUserAdmin}
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              password: event.target.value,
+                              requirePasswordReset: true,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="checkbox-line">
+                        <input
+                          type="checkbox"
+                          checked={selectedStaffUser.isActive !== false}
+                          disabled={!isUserAdmin || selectedStaffUser.id === session.id}
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              isActive: event.target.checked,
+                            })
+                          }
+                        />
+                        Account Active
+                      </label>
+                      <label className="checkbox-line">
+                        <input
+                          type="checkbox"
+                          checked={shouldShowOnLeadership(selectedStaffUser)}
+                          disabled={!isUserAdmin || isPinnedLeadershipUser(selectedStaffUser)}
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              showOnLeadership: event.target.checked,
+                            })
+                          }
+                        />
+                        Show on Leadership page
+                      </label>
+                    </div>
+                    <div className="role-picker role-picker--stacked">
+                      {staffRoles.map((role) => (
+                        <label key={role}>
+                          <input
+                            type="checkbox"
+                            checked={getUserRoles(selectedStaffUser).includes(role)}
+                            disabled={!isUserAdmin}
+                            onChange={(event) =>
+                              toggleStaffRole(selectedStaffUser, role, event.target.checked)
+                            }
+                          />
+                          <span>{role}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mfa-admin-panel">
+                      <div>
+                        <p className="section-label">MFA Enforcement</p>
+                        <h4>{selectedStaffUser.mfaEnrollmentStatus || "Required"}</h4>
+                      </div>
+                      <label className="checkbox-line">
+                        <input
+                          type="checkbox"
+                          checked={shouldRequireUserMfa(selectedStaffUser, mfaPolicy)}
+                          disabled={
+                            !isUserAdmin ||
+                            (mfaPolicy.exemptAdministrators && isAdministrator(selectedStaffUser))
+                          }
+                          onChange={(event) =>
+                            updateStaffUser(selectedStaffUser.id, {
+                              mfaRequired: event.target.checked,
+                              mfaEnrollmentStatus: event.target.checked
+                                ? "Required"
+                                : "Not Required",
+                            })
+                          }
+                        />
+                        Require MFA for this user
+                      </label>
+                      <button
+                        className="button button--outline"
+                        type="button"
+                        disabled={!isUserAdmin}
+                        onClick={() =>
+                          updateStaffUser(selectedStaffUser.id, {
+                            mfaEnabled: false,
+                            mfaMethods: {},
+                            mfaEnrollmentStatus: shouldRequireUserMfa(
+                              selectedStaffUser,
+                              mfaPolicy,
+                            )
+                              ? "Required"
+                              : "Not Required",
+                            lastMfaUpdatedAt: new Date().toISOString(),
+                          })
+                        }
+                      >
+                        Reset MFA Enrollment
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <EmptyPortalState>Select a staff user to manage.</EmptyPortalState>
+                )}
+              </section>
+
+              <section className="account-card">
+                <header>
+                  <div>
+                    <p className="section-label">MFA Management</p>
+                    <h3>MFA Policy Suite</h3>
+                    <p>Control whether staff must enroll MFA and which methods are allowed.</p>
+                  </div>
+                  <StatusBadge>
+                    {mfaPolicy.requireMfaForStaff ? "Required" : "Optional"}
+                  </StatusBadge>
+                </header>
+                <div className="mfa-admin-panel">
+                  <label className="checkbox-line">
+                    <input
+                      type="checkbox"
+                      checked={mfaPolicy.requireMfaForStaff}
+                      disabled={!isUserAdmin}
+                      onChange={(event) =>
+                        updateMfaPolicy({ requireMfaForStaff: event.target.checked })
+                      }
+                    />
+                    Require MFA for staff users
+                  </label>
+                  <label className="checkbox-line">
+                    <input
+                      type="checkbox"
+                      checked={mfaPolicy.forceFirstLoginEnrollment}
+                      disabled={!isUserAdmin}
+                      onChange={(event) =>
+                        updateMfaPolicy({ forceFirstLoginEnrollment: event.target.checked })
+                      }
+                    />
+                    Force MFA setup on first login
+                  </label>
+                  <label className="checkbox-line">
+                    <input
+                      type="checkbox"
+                      checked={mfaPolicy.exemptAdministrators}
+                      disabled={!isUserAdmin}
+                      onChange={(event) =>
+                        updateMfaPolicy({ exemptAdministrators: event.target.checked })
+                      }
+                    />
+                    Exempt Administrators for now
+                  </label>
+                </div>
+                <div className="mfa-methods">
+                  {mfaMethodOptions.map(({ id, label, body, icon: Icon }) => (
+                    <label key={id} className="mfa-method">
+                      <input
+                        type="checkbox"
+                        checked={mfaPolicy.allowedMethods?.[id] !== false}
+                        disabled={!isUserAdmin}
+                        onChange={(event) => togglePolicyMethod(id, event.target.checked)}
+                      />
+                      <Icon />
+                      <span>
+                        <strong>{label}</strong>
+                        <small>{body}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="staff-auth__note">
+                  All non-admin accounts are required to enroll MFA before entering
+                  the portal. Administrators are exempt while the client signs off on
+                  the final identity policy.
+                </p>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {["email-settings", "email-tools"].includes(activeTab) ? (
+          <div className="portal-panel portal-email-grid">
+            <form className="portal-form" onSubmit={(event) => event.preventDefault()}>
+              <div className="portal-panel__heading">
+                <Mail />
+                <div>
+                  <h2>Mail Server Settings</h2>
+                  <p>Store SMTP/POP3 configuration for a secure backend sender.</p>
+                </div>
+              </div>
+              <label>
+                Provider Name
+                <input
+                  name="providerName"
+                  value={mailSettings.providerName}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                SMTP Host
+                <input
+                  name="smtpHost"
+                  value={mailSettings.smtpHost}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                SMTP Port
+                <input
+                  name="smtpPort"
+                  value={mailSettings.smtpPort}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                POP3 Host
+                <input
+                  name="pop3Host"
+                  value={mailSettings.pop3Host}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                POP3 Port
+                <input
+                  name="pop3Port"
+                  value={mailSettings.pop3Port}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                Username
+                <input
+                  name="username"
+                  value={mailSettings.username}
+                  onChange={updateMailSettings}
+                  placeholder="mailbox@example.com"
+                />
+              </label>
+              <label>
+                SMTP App Password
+                <input
+                  name="password"
+                  type="password"
+                  value={mailSettings.password || ""}
+                  onChange={updateMailSettings}
+                  placeholder="Google app password or SMTP password"
+                />
+              </label>
+              <label>
+                From Name
+                <input
+                  name="fromName"
+                  value={mailSettings.fromName}
+                  onChange={updateMailSettings}
+                />
+              </label>
+              <label>
+                From Email
+                <input
+                  name="fromEmail"
+                  type="email"
+                  value={mailSettings.fromEmail}
+                  onChange={updateMailSettings}
+                  placeholder="ministry@example.com"
+                />
+              </label>
+              <label className="checkbox-line form-span">
+                <input
+                  name="useTls"
+                  type="checkbox"
+                  checked={Boolean(mailSettings.useTls)}
+                  onChange={updateMailSettings}
+                />
+                Use TLS
+              </label>
+              <p className="staff-auth__note form-span">
+                Messages are sent through the local AWD email API using these SMTP settings.
+                For Google Workspace, use an app password or approved SMTP credential.
+              </p>
+            </form>
+            <aside className="selection-empty">
+              <Send />
+              <h3>Email lives inside each contact.</h3>
+              <p>
+                Open CRM Contacts, select a record, then compose and track email
+                follow-up from that contact workspace.
+              </p>
+            </aside>
+          </div>
+        ) : null}
+
+        {activeTab === "database-schema" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <Database />
+              <div>
+                <h2>Database Design</h2>
+                <p>
+                  This prototype stores records in browser storage. The matching
+                  production schema is included in the repository.
+                </p>
+              </div>
+            </div>
+            <div className="database-cards">
+              {[
+                ["staff_users", "Portal accounts, role, and identity metadata"],
+                ["prayer_requests", "Submitted prayer requests and prayer status"],
+                ["testimonials", "Submitted stories, review status, and display flag"],
+                ["contacts", "CRM contact requests and follow-up status"],
+                ["email_settings", "SMTP/POP3 configuration metadata"],
+                ["email_messages", "Prepared or sent messages for contacts"],
+              ].map(([table, body]) => (
+                <article key={table}>
+                  <strong>{table}</strong>
+                  <p>{body}</p>
+                </article>
+              ))}
+            </div>
+            <p className="staff-auth__note">
+              See `database/ministry_management_schema.sql` for the backend
+              database structure.
+            </p>
+          </div>
+        ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Site() {
   const { pathname } = useLocation();
   const [donationOpen, setDonationOpen] = useState(false);
   const openDonation = () => setDonationOpen(true);
   const closeDonation = () => setDonationOpen(false);
+
+  useEffect(() => {
+    ensurePortalSeedData();
+  }, []);
 
   return (
     <>
@@ -1034,6 +4900,8 @@ function Site() {
             path="/Get_Involved"
             element={<GetInvolvedPage onDonate={openDonation} />}
           />
+          <Route path="/staff_portal" element={<StaffPortalPage />} />
+          <Route path="/staff-portal" element={<Navigate to="/staff_portal" replace />} />
           <Route path="/about" element={<Navigate to="/About_us" replace />} />
           <Route
             path="/ministries"
