@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nodemailer from "nodemailer";
@@ -9,6 +10,79 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../data");
 const dbPath = path.join(dataDir, "ministry-crm.json");
 const port = Number(process.env.AWD_API_PORT || 8787);
+const frontendPort = Number(process.env.AWD_FRONTEND_PORT || 5173);
+const networkPollMs = Number(process.env.AWD_NETWORK_POLL_MS || 5000);
+
+const privateIpv4Ranges = [
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+];
+
+const getWifiAddress = () => {
+  const interfaces = os.networkInterfaces();
+  const addresses = Object.entries(interfaces).flatMap(([name, entries = []]) =>
+    entries
+      .filter((entry) => entry.family === "IPv4" && !entry.internal)
+      .map((entry) => ({ name, address: entry.address })),
+  );
+  const wifiAddress = addresses.find((entry) => /^en\d+$/.test(entry.name));
+  const privateAddress = addresses.find((entry) =>
+    privateIpv4Ranges.some((range) => range.test(entry.address)),
+  );
+  return wifiAddress?.address || privateAddress?.address || addresses[0]?.address || "";
+};
+
+const buildNetworkStatus = () => {
+  const wifiAddress = getWifiAddress();
+  return {
+    connected: Boolean(wifiAddress),
+    wifiAddress,
+    frontendLocalUrl: `http://localhost:${frontendPort}/`,
+    frontendWifiUrl: wifiAddress ? `http://${wifiAddress}:${frontendPort}/` : "",
+    apiLocalUrl: `http://localhost:${port}/`,
+    apiWifiUrl: wifiAddress ? `http://${wifiAddress}:${port}/` : "",
+  };
+};
+
+let networkStatus = buildNetworkStatus();
+const networkClients = new Set();
+
+const sendNetworkEvent = (response, status) => {
+  response.write(`event: network-status\n`);
+  response.write(`data: ${JSON.stringify(status)}\n\n`);
+};
+
+const broadcastNetworkStatus = () => {
+  networkClients.forEach((response) => sendNetworkEvent(response, networkStatus));
+};
+
+const logNetworkStatus = (reason = "current") => {
+  const lines = [
+    `AWD network ${reason}: ${networkStatus.connected ? networkStatus.wifiAddress : "offline"}`,
+    `  Frontend local: ${networkStatus.frontendLocalUrl}`,
+    networkStatus.frontendWifiUrl ? `  Frontend Wi-Fi: ${networkStatus.frontendWifiUrl}` : "",
+    `  API local: ${networkStatus.apiLocalUrl}`,
+    networkStatus.apiWifiUrl ? `  API Wi-Fi: ${networkStatus.apiWifiUrl}` : "",
+  ].filter(Boolean);
+  console.log(lines.join("\n"));
+};
+
+const startNetworkWatcher = () => {
+  logNetworkStatus("ready");
+  setInterval(() => {
+    const nextStatus = buildNetworkStatus();
+    const addressChanged = nextStatus.wifiAddress !== networkStatus.wifiAddress;
+    const connectionChanged = nextStatus.connected !== networkStatus.connected;
+    if (addressChanged || connectionChanged) {
+      networkStatus = nextStatus;
+      logNetworkStatus(nextStatus.connected ? "reconnected/refreshed" : "disconnected");
+      broadcastNetworkStatus();
+      return;
+    }
+    networkStatus = nextStatus;
+  }, networkPollMs).unref();
+};
 
 const defaultCategories = [
   "General Contact",
@@ -334,6 +408,26 @@ const publicUser = (user) => ({
 
 const routes = {
   "GET /api/health": async (_, response) => json(response, 200, { ok: true }),
+
+  "GET /api/network-status": async (_, response) => {
+    networkStatus = buildNetworkStatus();
+    json(response, 200, networkStatus);
+  },
+
+  "GET /api/network-events": async (request, response) => {
+    response.writeHead(200, {
+      "Access-Control-Allow-Origin": process.env.AWD_ALLOWED_ORIGIN || "*",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "Content-Type": "text/event-stream",
+    });
+    networkStatus = buildNetworkStatus();
+    networkClients.add(response);
+    sendNetworkEvent(response, networkStatus);
+    request.on("close", () => {
+      networkClients.delete(response);
+    });
+  },
 
   "POST /api/auth/register": async (request, response, db) => {
     const body = await readBody(request);
@@ -842,4 +936,5 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(port, () => {
   console.log(`AWD identity/email API listening on http://localhost:${port}`);
+  startNetworkWatcher();
 });

@@ -1,31 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
   Database,
   Eye,
+  EyeOff,
   Fingerprint,
   FileUp,
+  GripVertical,
   HandHeart,
   Handshake,
   Heart,
+  Image,
   Inbox,
   KeyRound,
+  Layers,
   LayoutDashboard,
   Lock,
   Mail,
   Menu,
   MessageSquareQuote,
+  Monitor,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
   Plus,
+  Save,
   Send,
   Shield,
   ShieldCheck,
   Smartphone,
   Sparkles,
   Tags,
+  Trash2,
   UserCog,
   UserPlus,
   Users,
@@ -133,6 +144,8 @@ const storageKeys = {
   session: "awd:staffSession",
   mfaPolicy: "awd:mfaPolicy",
   mailSettings: "awd:mailSettings",
+  pages: "awd:managedPages",
+  contentOverrides: "awd:contentOverrides",
 };
 
 const prayerStatuses = ["Pending Prayer", "We have Prayed"];
@@ -507,6 +520,229 @@ const defaultMailSettings = {
   useTls: true,
 };
 
+const defaultManagedPages = [
+  {
+    id: "home",
+    title: "Home",
+    route: "/",
+    navLabel: "Home",
+    status: "Published",
+    isActive: true,
+    updatedAt: "2026-06-27T14:00:00.000Z",
+    hero: {
+      title: "Breaking Every Barrier!",
+      body: "Faith-led ministry, community outreach, and service through All Walls Down Organization.",
+      image: "/assets/hero-barrier.webp",
+    },
+    sections: [
+      {
+        id: "mission",
+        label: "Mission Statement",
+        type: "Text",
+        visible: true,
+        title: "Breaking barriers through faith and service.",
+        body: "All Walls Down exists to help people encounter God’s love through unity, outreach, discipleship, and practical community care.",
+      },
+      {
+        id: "ministries",
+        label: "Ministry Cards",
+        type: "Widget Group",
+        visible: true,
+        title: "Ministries built around real people.",
+        body: "Brothers Keepers, Daughters of the King, prayer, outreach, and family support create clear places for people to belong and serve.",
+      },
+      {
+        id: "testimonials",
+        label: "Community Testimonials",
+        type: "Testimonials",
+        visible: true,
+        title: "Stories from the AWD community.",
+        body: "Approved testimonies can be featured here so visitors see what God is doing through the ministry.",
+      },
+      {
+        id: "giving",
+        label: "Giving Callout",
+        type: "Callout",
+        visible: true,
+        title: "Partner with the mission.",
+        body: "Invite supporters to give, volunteer, and pray as AWD continues serving families and breaking walls down.",
+      },
+    ],
+  },
+  {
+    id: "about",
+    title: "About Us",
+    route: "/About_us",
+    navLabel: "About",
+    status: "Published",
+    isActive: true,
+    updatedAt: "2026-06-26T18:30:00.000Z",
+    hero: {
+      title: "Faith that moves through service.",
+      body: "The story, mission, and founding heart behind All Walls Down Organization.",
+      image: "/assets/awd-logo.webp",
+    },
+    sections: [
+      {
+        id: "story",
+        label: "Organization Story",
+        type: "Rich Text",
+        visible: true,
+        title: "The story behind All Walls Down.",
+        body: "AWD was formed from a burden to see faith, accountability, and love become practical tools for healing people and strengthening families.",
+      },
+      {
+        id: "founders",
+        label: "Founder Profiles",
+        type: "Image + Text",
+        visible: true,
+        title: "Founders and ministry leaders.",
+        body: "Monta and Kim continue to guide the ministry with a heart for unity, restoration, and Christ-centered service.",
+        image: "/assets/core-leadership-transparent.webp",
+      },
+      {
+        id: "beliefs",
+        label: "Mission Principles",
+        type: "Panel",
+        visible: true,
+        title: "Faith, unity, and service.",
+        body: "Every section of the ministry should point people toward discipleship, accountability, compassion, and lasting transformation.",
+      },
+    ],
+  },
+  {
+    id: "ministries",
+    title: "Ministries",
+    route: "/Ministries",
+    navLabel: "Ministries",
+    status: "Published",
+    isActive: true,
+    updatedAt: "2026-06-25T21:10:00.000Z",
+    hero: {
+      title: "Ministries built for discipleship.",
+      body: "Brothers Keepers and Daughters of the King invite people into faith, accountability, and purpose.",
+      image: "/assets/brothers-keepers.webp",
+    },
+    sections: [
+      {
+        id: "bk",
+        label: "Brothers Keepers",
+        type: "Ministry Feature",
+        visible: true,
+        title: "Brothers Keepers",
+        body: "Men walking together in faith, leadership, accountability, and brotherhood.",
+        image: "/assets/brothers-keepers.webp",
+      },
+      {
+        id: "dok",
+        label: "Daughters of the King",
+        type: "Ministry Feature",
+        visible: true,
+        title: "Daughters of the King",
+        body: "Women growing in identity, purpose, encouragement, and discipleship.",
+        image: "/assets/dok-clean.png",
+      },
+      {
+        id: "support",
+        label: "Support Ministry",
+        type: "CTA",
+        visible: true,
+        title: "Support the work of ministry.",
+        body: "Help build spaces where people can pray, serve, learn, and grow together.",
+      },
+    ],
+  },
+  {
+    id: "leadership",
+    title: "Leadership",
+    route: "/Leadership",
+    navLabel: "Leadership",
+    status: "Published",
+    isActive: true,
+    updatedAt: "2026-06-27T00:00:00.000Z",
+    hero: {
+      title: "Leading with integrity and unity.",
+      body: "Servant leaders committed to guiding AWD, Brothers Keepers, and Daughters of the King.",
+      image: "/assets/core-leadership-transparent.webp",
+    },
+    sections: [
+      {
+        id: "bk-director",
+        label: "Brothers Keepers Director",
+        type: "Pinned Leader",
+        visible: true,
+        title: "Brothers Keepers leadership.",
+        body: "Pinned ministry leaders remain visible while staff profile settings control the rest of the leadership roster.",
+      },
+      {
+        id: "leadership-roster",
+        label: "Core Leadership Roster",
+        type: "Dynamic Staff List",
+        visible: true,
+        title: "Core leadership roster.",
+        body: "This dynamic section pulls from staff accounts marked to appear on the Leadership page, while Monta and Kim always remain visible.",
+      },
+      {
+        id: "dok-director",
+        label: "DOK Director",
+        type: "Pinned Leader",
+        visible: true,
+        title: "Daughters of the King leadership.",
+        body: "Highlight the ministry lead and supporting team responsible for Daughters of the King.",
+      },
+    ],
+  },
+  {
+    id: "get-involved",
+    title: "Get Involved",
+    route: "/Get_Involved",
+    navLabel: "Get Involved",
+    status: "Published",
+    isActive: true,
+    updatedAt: "2026-06-24T16:45:00.000Z",
+    hero: {
+      title: "Pray, serve, partner, and give.",
+      body: "Join AWD as we serve people, strengthen families, and break barriers together.",
+      image: "/assets/awd-logo.webp",
+    },
+    sections: [
+      {
+        id: "ways",
+        label: "Ways to Engage",
+        type: "Action Cards",
+        visible: true,
+        title: "Ways to get involved.",
+        body: "Invite visitors to pray, serve, join a ministry, share a testimony, or support outreach.",
+      },
+      {
+        id: "donation",
+        label: "Donation Embed",
+        type: "Giving Widget",
+        visible: true,
+        title: "Give to support AWD.",
+        body: "Donations help fund outreach, ministry tools, family support, and community events.",
+      },
+      {
+        id: "contact",
+        label: "Contact Intake",
+        type: "Form",
+        visible: true,
+        title: "Start the conversation.",
+        body: "Let people contact the ministry team, request prayer, or ask how to connect.",
+      },
+    ],
+  },
+];
+
+const widgetTemplates = [
+  ["Hero", "Locked page opener with image, title, and body copy"],
+  ["Text Block", "Editable heading, paragraph, and call-to-action"],
+  ["Image Feature", "Side-by-side image and content module"],
+  ["CTA Banner", "Giving, volunteer, or ministry action callout"],
+  ["Staff Roster", "Dynamic staff-powered people list"],
+  ["Form Widget", "Contact, prayer, testimonial, or custom intake form"],
+];
+
 const createId = (prefix) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -523,6 +759,104 @@ function readStored(key, fallback) {
 function writeStored(key, value) {
   window.localStorage.setItem(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent("awd:data-change", { detail: { key } }));
+}
+
+const editableContentSelectors = [
+  ".route-stage h1",
+  ".route-stage h2",
+  ".route-stage h3",
+  ".route-stage p:not(.section-label)",
+  ".route-stage blockquote",
+  ".route-stage cite",
+  ".route-stage strong",
+].join(",");
+
+function getEditableTextTargets(root = document) {
+  return [...root.querySelectorAll(editableContentSelectors)].filter(
+    (element) =>
+      element.textContent.trim() &&
+      !element.closest("button, a, form, .modal-backdrop, .testimonial-modal"),
+  );
+}
+
+function getEditableImageTargets(root = document) {
+  return [...root.querySelectorAll(".route-stage img")].filter(
+    (element) => !element.closest(".hero, .page-hero, button, a, .modal-backdrop"),
+  );
+}
+
+function getContentOverrideKey(route, type, index) {
+  return `${route || "/"}::${type}::${index}`;
+}
+
+function saveContentOverrideValue(route, type, index, value) {
+  const key = getContentOverrideKey(route, type, index);
+  const overrides = readStored(storageKeys.contentOverrides, {});
+  writeStored(storageKeys.contentOverrides, {
+    ...overrides,
+    [key]: {
+      type,
+      value,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+}
+
+function applyContentOverridesToDocument(root = document, route = window.location.pathname) {
+  const overrides = readStored(storageKeys.contentOverrides, {});
+  getEditableTextTargets(root).forEach((element, index) => {
+    const override = overrides[getContentOverrideKey(route, "text", index)];
+    if (override?.value && element.textContent !== override.value) {
+      element.textContent = override.value;
+    }
+  });
+  getEditableImageTargets(root).forEach((element, index) => {
+    const override = overrides[getContentOverrideKey(route, "image", index)];
+    if (override?.value && element.getAttribute("src") !== override.value) {
+      element.setAttribute("src", override.value);
+    }
+  });
+}
+
+function hydrateManagedPages(pages = defaultManagedPages) {
+  return pages.map((page) => {
+    const defaultPage = defaultManagedPages.find((item) => item.id === page.id);
+    const sourceSections = Array.isArray(page.sections) && page.sections.length
+      ? page.sections
+      : defaultPage?.sections || [];
+
+    return {
+      ...defaultPage,
+      ...page,
+      hero: {
+        ...(defaultPage?.hero || {}),
+        ...(page.hero || {}),
+      },
+      sections: sourceSections.map((section) => {
+        const defaultSection =
+          defaultPage?.sections.find((item) => item.id === section.id) || {};
+        return {
+          ...defaultSection,
+          ...section,
+          title:
+            section.title ||
+            defaultSection.title ||
+            section.label ||
+            defaultSection.label ||
+            "Untitled section",
+          body:
+            section.body ||
+            defaultSection.body ||
+            "Select this section and update the content in the inspector.",
+          image:
+            typeof section.image === "string"
+              ? section.image
+              : defaultSection.image || "",
+          visible: section.visible !== false,
+        };
+      }),
+    };
+  });
 }
 
 function getUserRoles(user) {
@@ -665,6 +999,14 @@ function ensurePortalSeedData() {
   }
   if (!window.localStorage.getItem(storageKeys.mailSettings)) {
     writeStored(storageKeys.mailSettings, defaultMailSettings);
+  }
+  const storedPages = readStored(storageKeys.pages, []);
+  const nextPages = hydrateManagedPages(storedPages.length ? storedPages : defaultManagedPages);
+  if (
+    !window.localStorage.getItem(storageKeys.pages) ||
+    JSON.stringify(storedPages) !== JSON.stringify(nextPages)
+  ) {
+    writeStored(storageKeys.pages, nextPages);
   }
 }
 
@@ -864,6 +1206,131 @@ function MotionEffects() {
   return <div className="cursor-light" aria-hidden="true" />;
 }
 
+const isLanIpv4Host = (host) =>
+  /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/.test(
+    host,
+  );
+
+const getNetworkApiOrigin = () => {
+  if (typeof window === "undefined") return "";
+  const { hostname, protocol } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1") return "http://localhost:8787";
+  return `${protocol}//${hostname}:8787`;
+};
+
+function NetworkAddressRefresh() {
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.EventSource) return undefined;
+    const apiOrigin = getNetworkApiOrigin();
+    if (!apiOrigin) return undefined;
+
+    const redirectIfNeeded = (status) => {
+      const nextHost = status?.wifiAddress;
+      const currentHost = window.location.hostname;
+      if (
+        !nextHost ||
+        nextHost === currentHost ||
+        currentHost === "localhost" ||
+        currentHost === "127.0.0.1" ||
+        !isLanIpv4Host(currentHost)
+      ) {
+        return;
+      }
+      const nextUrl = new URL(window.location.href);
+      nextUrl.hostname = nextHost;
+      window.location.replace(nextUrl.toString());
+    };
+
+    const source = new EventSource(`${apiOrigin}/api/network-events`);
+    source.addEventListener("network-status", (event) => {
+      try {
+        redirectIfNeeded(JSON.parse(event.data));
+      } catch {
+        // Ignore malformed status events; the next valid event can refresh the page.
+      }
+    });
+    source.onerror = () => {
+      fetch(`${apiOrigin}/api/network-status`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then(redirectIfNeeded)
+        .catch(() => {});
+    };
+
+    return () => source.close();
+  }, []);
+
+  return null;
+}
+
+function SiteContentOverrides() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    const isEditorPreview = new URLSearchParams(search).get("awdEdit") === "1";
+
+    applyContentOverridesToDocument(document, pathname);
+    if (isEditorPreview) {
+      getEditableTextTargets(document).forEach((element, index) => {
+        element.contentEditable = "true";
+        element.spellcheck = true;
+        element.dataset.awdEditText = String(index);
+        element.classList.add("cms-frame-editable-text");
+        element.addEventListener("focus", () => {
+          element.classList.add("is-editing");
+        });
+        element.addEventListener("blur", () => {
+          element.classList.remove("is-editing");
+          saveContentOverrideValue(pathname, "text", index, element.textContent.trim());
+        });
+      });
+
+      getEditableImageTargets(document).forEach((element, index) => {
+        element.dataset.awdEditImage = String(index);
+        element.tabIndex = 0;
+        element.classList.add("cms-frame-editable-image");
+        const openEditor = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.parent.postMessage(
+            {
+              type: "awd:image-edit",
+              route: pathname,
+              index,
+              src: element.getAttribute("src") || "",
+            },
+            window.location.origin,
+          );
+        };
+        element.addEventListener("click", openEditor);
+        element.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") openEditor(event);
+        });
+      });
+    }
+
+    const handleDataChange = (event) => {
+      if (!event.detail?.key || event.detail.key === storageKeys.contentOverrides) {
+        applyContentOverridesToDocument(document, pathname);
+      }
+    };
+    const handleMessage = (event) => {
+      if (event.origin === window.location.origin && event.data?.type === "awd:apply-overrides") {
+        applyContentOverridesToDocument(document, pathname);
+      }
+    };
+    window.addEventListener("storage", handleDataChange);
+    window.addEventListener("awd:data-change", handleDataChange);
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("storage", handleDataChange);
+      window.removeEventListener("awd:data-change", handleDataChange);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [pathname, search]);
+
+  return null;
+}
+
 function setMeta(selector, attribute, value) {
   let element = document.head.querySelector(selector);
   if (!element) {
@@ -986,14 +1453,14 @@ function Ornament({ compact = false }) {
 
 function Header({ onDonate }) {
   const [open, setOpen] = useState(false);
+  const [managedPages] = useStoredCollection(
+    storageKeys.pages,
+    hydrateManagedPages(defaultManagedPages),
+  );
   const closeMenu = () => setOpen(false);
-  const navItems = [
-    ["/", "Home"],
-    ["/About_us", "About"],
-    ["/Ministries", "Ministries"],
-    ["/Leadership", "Leadership"],
-    ["/Get_Involved", "Get Involved"],
-  ];
+  const navItems = managedPages
+    .filter((page) => page.isActive !== false && page.status === "Published")
+    .map((page) => [page.route, page.navLabel || page.title]);
 
   return (
     <header className="site-header">
@@ -2305,6 +2772,7 @@ function StaffPortalPage() {
     prayer: false,
     testimonials: false,
     communications: false,
+    pages: true,
     administration: false,
     system: false,
   });
@@ -2335,6 +2803,10 @@ function StaffPortalPage() {
     storageKeys.mailSettings,
     defaultMailSettings,
   );
+  const [managedPages, setManagedPages] = useStoredCollection(
+    storageKeys.pages,
+    hydrateManagedPages(defaultManagedPages),
+  );
   const [composer, setComposer] = useState({
     contactId: "",
     subject: "",
@@ -2353,6 +2825,13 @@ function StaffPortalPage() {
   const [csvImportSource, setCsvImportSource] = useState("Auto Detect");
   const [csvImportNotice, setCsvImportNotice] = useState("");
   const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [selectedPageId, setSelectedPageId] = useState("");
+  const [selectedPageIds, setSelectedPageIds] = useState([]);
+  const [pageEditorMode, setPageEditorMode] = useState("list");
+  const [deleteImagePageId, setDeleteImagePageId] = useState("");
+  const siteFrameRef = useRef(null);
+  const [frameImageEditor, setFrameImageEditor] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [newStaffForm, setNewStaffForm] = useState({
     name: "",
     email: "",
@@ -2367,6 +2846,27 @@ function StaffPortalPage() {
       setSelectedTestimonialId(testimonials[0].id);
     }
   }, [selectedTestimonialId, testimonials]);
+
+  useEffect(() => {
+    if (!selectedPageId && managedPages.length) {
+      setSelectedPageId(managedPages[0].id);
+    }
+  }, [managedPages, selectedPageId]);
+
+  useEffect(() => {
+    const handleFrameMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "awd:image-edit") return;
+      setFrameImageEditor({
+        route: event.data.route,
+        index: event.data.index,
+        src: event.data.src || "",
+        draft: event.data.src || "",
+      });
+    };
+    window.addEventListener("message", handleFrameMessage);
+    return () => window.removeEventListener("message", handleFrameMessage);
+  }, []);
 
   const login = (user, options = {}) => {
     const roles = getUserRoles(user);
@@ -2548,7 +3048,8 @@ function StaffPortalPage() {
 
   const selectedStaffUser =
     staffUsers.find((user) => user.id === selectedStaffId) || staffUsers[0];
-
+  const selectedManagedPage =
+    managedPages.find((page) => page.id === selectedPageId) || managedPages[0];
   const logout = () => {
     window.localStorage.removeItem(storageKeys.session);
     setSession(null);
@@ -2766,6 +3267,61 @@ function StaffPortalPage() {
     }));
   };
 
+  const updateManagedPage = (id, patch) => {
+    setManagedPages((current) =>
+      current.map((page) =>
+        page.id === id
+          ? {
+              ...page,
+              ...patch,
+              hero: patch.hero ? { ...page.hero, ...patch.hero } : page.hero,
+              updatedAt: new Date().toISOString(),
+            }
+          : page,
+      ),
+    );
+  };
+
+  const applyFrameImageChange = (value) => {
+    if (!frameImageEditor) return;
+    saveContentOverrideValue(
+      frameImageEditor.route,
+      "image",
+      frameImageEditor.index,
+      value,
+    );
+    siteFrameRef.current?.contentWindow?.postMessage(
+      { type: "awd:apply-overrides" },
+      window.location.origin,
+    );
+    setFrameImageEditor(null);
+  };
+
+  const toggleManagedPageSelection = (id) => {
+    setSelectedPageIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id],
+    );
+  };
+
+  const bulkUpdateManagedPages = (patch) => {
+    if (!selectedPageIds.length) return;
+    setManagedPages((current) =>
+      current.map((page) =>
+        selectedPageIds.includes(page.id)
+          ? { ...page, ...patch, updatedAt: new Date().toISOString() }
+          : page,
+      ),
+    );
+    setSelectedPageIds([]);
+  };
+
+  const openPageEditor = (pageId) => {
+    setSelectedPageId(pageId);
+    setPageEditorMode("editor");
+  };
+
   const selectContactForEmail = (contact) => {
     setSelectedContactId(contact.id);
     setComposer({
@@ -2938,6 +3494,11 @@ function StaffPortalPage() {
       ["staff-dashboard", "Staff Dashboard"],
       ["staff-accounts", "Staff Accounts"],
       ["staff-mfa", "MFA Management"],
+      ["page-pages", "Pages"],
+      ["page-widgets", "Widgets"],
+      ["page-designer", "Designer"],
+      ["page-navigation", "Navigation"],
+      ["staff-profile", "My Profile"],
       ["email-settings", "Mail Settings"],
       ["email-tools", "Email Tools"],
       ["database-schema", "Database Schema"],
@@ -3028,9 +3589,37 @@ function StaffPortalPage() {
       ],
     },
     {
+      id: "pages",
+      label: "Page Administration",
+      items: [
+        {
+          id: "page-pages",
+          label: "Pages",
+          detail: "Publish, draft, reorder, and edit site pages",
+          count: managedPages.filter((page) => page.status === "Published").length,
+        },
+        {
+          id: "page-widgets",
+          label: "Widgets",
+          detail: "Reusable content blocks and section controls",
+        },
+        {
+          id: "page-designer",
+          label: "Designer",
+          detail: "Drag and drop section builder",
+        },
+        {
+          id: "page-navigation",
+          label: "Navigation",
+          detail: "Header menu labels and page visibility",
+        },
+      ],
+    },
+    {
       id: "administration",
       label: "Administration",
       items: [
+        { id: "staff-profile", label: "My Profile", detail: "Update your profile and password" },
         { id: "staff-dashboard", label: "Staff Dashboard", detail: "Account and security overview" },
         {
           id: "staff-accounts",
@@ -3057,7 +3646,7 @@ function StaffPortalPage() {
   return (
     <section className="staff-portal">
       <div className="shell staff-portal__shell">
-        <div className="portal-layout">
+        <div className={`portal-layout ${sidebarCollapsed ? "portal-layout--collapsed" : ""}`}>
           <aside className="portal-sidebar" aria-label="Management portal navigation">
             <div className="portal-sidebar__brand">
               <img src="/assets/awd-logo.webp" alt="" width="1190" height="1322" />
@@ -3065,6 +3654,14 @@ function StaffPortalPage() {
                 <strong>Management</strong>
                 <span>{activeNavItem}</span>
               </div>
+              <button
+                className="portal-sidebar__toggle"
+                type="button"
+                aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+                onClick={() => setSidebarCollapsed((value) => !value)}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+              </button>
             </div>
             <nav className="portal-sidebar__nav">
               {portalNavigation.map((group) => (
@@ -3085,7 +3682,10 @@ function StaffPortalPage() {
                       key={item.id}
                       type="button"
                       className={`portal-subnav__item ${activeTab === item.id ? "is-active" : ""}`}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        if (item.id === "page-pages") setPageEditorMode("list");
+                      }}
                     >
                       <span>
                         <strong>{item.label}</strong>
@@ -3186,6 +3786,261 @@ function StaffPortalPage() {
                       </button>
                     ))}
                   </section>
+                </div>
+              </div>
+            ) : null}
+
+            {activeTab === "page-pages" ? (
+              <div className="portal-panel cms-panel">
+                {pageEditorMode === "list" ? (
+                  <>
+                    <div className="portal-panel__heading cms-heading">
+                      <Layers />
+                      <div>
+                        <h2>Pages</h2>
+                        <p>Manage site pages, publishing state, navigation visibility, and locked layouts.</p>
+                      </div>
+                    </div>
+                    <div className="cms-toolbar">
+                      <div>
+                        <span>{selectedPageIds.length} selected</span>
+                        <strong>{managedPages.filter((page) => page.isActive !== false).length} active pages</strong>
+                      </div>
+                      <div className="cms-toolbar__actions">
+                        <button className="button button--outline" type="button" onClick={() => bulkUpdateManagedPages({ isActive: true, status: "Published" })}>
+                          Activate
+                        </button>
+                        <button className="button button--outline" type="button" onClick={() => bulkUpdateManagedPages({ isActive: false })}>
+                          Deactivate
+                        </button>
+                        <button className="button button--outline" type="button" onClick={() => bulkUpdateManagedPages({ status: "Draft", isActive: false })}>
+                          Move to Draft
+                        </button>
+                        <button className="button button--outline" type="button" onClick={() => bulkUpdateManagedPages({ status: "Trash", isActive: false })}>
+                          Trash
+                        </button>
+                      </div>
+                    </div>
+                    <div className="cms-page-list" role="table" aria-label="Site pages">
+                      <div className="cms-page-list__head" role="row">
+                        <span>Page</span>
+                        <span>Route</span>
+                        <span>Status</span>
+                        <span>Navigation</span>
+                        <span>Updated</span>
+                      </div>
+                      {managedPages.map((page) => (
+                        <article
+                          key={page.id}
+                          className={`cms-page-row ${selectedPageId === page.id ? "is-active" : ""}`}
+                          role="row"
+                        >
+                          <label className="cms-select">
+                            <input
+                              type="checkbox"
+                              checked={selectedPageIds.includes(page.id)}
+                              onChange={() => toggleManagedPageSelection(page.id)}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          </label>
+                          <button type="button" className="cms-page-row__main" onClick={() => openPageEditor(page.id)}>
+                            <strong>{page.title}</strong>
+                            <small>{page.sections.filter((section) => section.visible !== false).length} visible sections</small>
+                          </button>
+                          <span>{page.route}</span>
+                          <StatusBadge>{page.status}</StatusBadge>
+                          <label className="checkbox-line cms-inline-toggle">
+                            <input
+                              type="checkbox"
+                              checked={page.isActive !== false && page.status === "Published"}
+                              onChange={(event) =>
+                                updateManagedPage(page.id, {
+                                  isActive: event.target.checked,
+                                  status: event.target.checked ? "Published" : "Draft",
+                                })
+                              }
+                            />
+                            Show in header
+                          </label>
+                          <span>{formatDate(page.updatedAt)}</span>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="cms-editor-bar">
+                      <button className="button button--outline" type="button" onClick={() => setPageEditorMode("list")}>
+                        <ArrowLeft size={18} /> Back to Pages
+                      </button>
+                      <div>
+                        <button className="button button--outline" type="button">
+                          <Monitor size={17} /> Preview
+                        </button>
+                        <button
+                          className="button button--outline"
+                          type="button"
+                          onClick={() => selectedManagedPage && updateManagedPage(selectedManagedPage.id, { status: "Draft", isActive: false })}
+                        >
+                          <Save size={17} /> Save Draft
+                        </button>
+                        <button
+                          className="button button--gold"
+                          type="button"
+                          onClick={() => selectedManagedPage && updateManagedPage(selectedManagedPage.id, { status: "Published", isActive: true })}
+                        >
+                          <CheckCircle2 size={17} /> Publish
+                        </button>
+                      </div>
+                    </div>
+                    {selectedManagedPage ? (
+                      <div className="cms-editor">
+                        <iframe
+                          ref={siteFrameRef}
+                          key={selectedManagedPage.route}
+                          className="cms-site-frame"
+                          title={`${selectedManagedPage.title} live site preview`}
+                          src={`${selectedManagedPage.route}?awdEdit=1`}
+                        />
+                        {frameImageEditor ? (
+                          <div className="cms-image-popover" role="dialog" aria-label="Image options">
+                            <div>
+                              <Image size={17} />
+                              <strong>Image options</strong>
+                            </div>
+                            <label>
+                              Image path
+                              <input
+                                value={frameImageEditor.draft}
+                                onChange={(event) =>
+                                  setFrameImageEditor((current) => ({
+                                    ...current,
+                                    draft: event.target.value,
+                                  }))
+                                }
+                              />
+                            </label>
+                            <div>
+                              <button
+                                className="button button--gold"
+                                type="button"
+                                onClick={() => applyFrameImageChange(frameImageEditor.draft)}
+                              >
+                                Replace Image
+                              </button>
+                              <button
+                                className="button button--outline"
+                                type="button"
+                                onClick={() => applyFrameImageChange("")}
+                              >
+                                Delete
+                              </button>
+                              <button
+                                className="button button--outline"
+                                type="button"
+                                onClick={() => setFrameImageEditor(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <EmptyPortalState>Select a page to edit.</EmptyPortalState>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {activeTab === "page-widgets" ? (
+              <div className="portal-panel cms-panel">
+                <div className="portal-panel__heading cms-heading">
+                  <Layers />
+                  <div>
+                    <h2>Widgets</h2>
+                    <p>Reusable building blocks administrators can combine without touching the AWD theme.</p>
+                  </div>
+                </div>
+                <div className="cms-widget-grid">
+                  {widgetTemplates.map(([name, detail]) => (
+                    <article key={name}>
+                      <div><Layers /></div>
+                      <strong>{name}</strong>
+                      <p>{detail}</p>
+                      <button className="button button--outline" type="button">Add to Designer</button>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {activeTab === "page-designer" ? (
+              <div className="portal-panel cms-panel">
+                <div className="portal-panel__heading cms-heading">
+                  <Pencil />
+                  <div>
+                    <h2>Designer</h2>
+                    <p>Drag widget sections into a page-safe layout area while protected theme regions stay locked.</p>
+                  </div>
+                </div>
+                <div className="cms-designer">
+                  <aside>
+                    <p className="section-label">Widget Library</p>
+                    {widgetTemplates.map(([name]) => (
+                      <button key={name} type="button"><GripVertical size={15} /> {name}</button>
+                    ))}
+                  </aside>
+                  <section>
+                    <div className="cms-drop-zone cms-drop-zone--locked"><Lock size={16} /> Header and hero are locked</div>
+                    <div className="cms-drop-zone"><GripVertical size={18} /> Drop a widget section here</div>
+                    <div className="cms-drop-zone"><GripVertical size={18} /> Add another section</div>
+                    <div className="cms-drop-zone cms-drop-zone--locked"><Lock size={16} /> Footer is locked</div>
+                  </section>
+                  <aside>
+                    <p className="section-label">Design Guardrails</p>
+                    <article><strong>Theme Safe</strong><span>Fonts, colors, spacing, and buttons stay consistent.</span></article>
+                    <article><strong>Content Only</strong><span>Admins edit copy, media, ordering, and visibility.</span></article>
+                    <article><strong>Responsive</strong><span>Sections inherit the production layout rules.</span></article>
+                  </aside>
+                </div>
+              </div>
+            ) : null}
+
+            {activeTab === "page-navigation" ? (
+              <div className="portal-panel cms-panel">
+                <div className="portal-panel__heading cms-heading">
+                  <Menu />
+                  <div>
+                    <h2>Navigation</h2>
+                    <p>Control which published pages appear in the public site header.</p>
+                  </div>
+                </div>
+                <div className="cms-navigation-list">
+                  {managedPages.map((page, index) => (
+                    <article key={page.id}>
+                      <span>{index + 1}</span>
+                      <input
+                        value={page.navLabel}
+                        onChange={(event) => updateManagedPage(page.id, { navLabel: event.target.value })}
+                      />
+                      <code>{page.route}</code>
+                      <label className="checkbox-line">
+                        <input
+                          type="checkbox"
+                          checked={page.isActive !== false && page.status === "Published"}
+                          onChange={(event) =>
+                            updateManagedPage(page.id, {
+                              isActive: event.target.checked,
+                              status: event.target.checked ? "Published" : "Draft",
+                            })
+                          }
+                        />
+                        Header link visible
+                      </label>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -3696,6 +4551,69 @@ function StaffPortalPage() {
                 <span>Inactive</span>
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {activeTab === "staff-profile" ? (
+          <div className="portal-panel">
+            <div className="portal-panel__heading">
+              <UserCog />
+              <div>
+                <h2>My Profile</h2>
+                <p>Update your staff profile details and password without opening the full directory.</p>
+              </div>
+            </div>
+            <section className="account-card account-card--wide">
+              <header>
+                <div>
+                  <p className="section-label">Signed In Profile</p>
+                  <h3>{currentStaffUser?.name || session.name || "Staff User"}</h3>
+                  <p>{currentStaffUser?.email || session.email}</p>
+                </div>
+                <StatusBadge>{getUserRoles(currentStaffUser).join(" / ")}</StatusBadge>
+              </header>
+              <div className="portal-form">
+                <label>
+                  Name
+                  <input
+                    value={currentStaffUser?.name || ""}
+                    onChange={(event) =>
+                      currentStaffUser?.id &&
+                      updateStaffUser(currentStaffUser.id, { name: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    value={currentStaffUser?.email || ""}
+                    onChange={(event) =>
+                      currentStaffUser?.id &&
+                      updateStaffUser(currentStaffUser.id, { email: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  New Password
+                  <input
+                    type="password"
+                    value={currentStaffUser?.password || ""}
+                    onChange={(event) =>
+                      currentStaffUser?.id &&
+                      updateStaffUser(currentStaffUser.id, {
+                        password: event.target.value,
+                        requirePasswordReset: false,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Roles
+                  <input value={getUserRoles(currentStaffUser).join(", ")} readOnly />
+                </label>
+              </div>
+            </section>
           </div>
         ) : null}
 
@@ -4857,6 +5775,37 @@ function StaffPortalPage() {
             </p>
           </div>
         ) : null}
+        {deleteImagePageId ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true">
+            <section className="donation-modal testimonial-modal cms-confirm-modal">
+              <header>
+                <div><Trash2 size={18} /> Confirm Image Removal</div>
+                <button type="button" aria-label="Close" onClick={() => setDeleteImagePageId("")}>
+                  <X />
+                </button>
+              </header>
+              <div className="donation-modal__intro">
+                <h2>Remove this image?</h2>
+                <p>This will clear the image path for the selected page hero. The page layout stays protected.</p>
+              </div>
+              <div className="testimonial-modal__actions cms-confirm-actions">
+                <button
+                  className="button button--gold"
+                  type="button"
+                  onClick={() => {
+                    updateManagedPage(deleteImagePageId, { hero: { image: "" } });
+                    setDeleteImagePageId("");
+                  }}
+                >
+                  Delete Image
+                </button>
+                <button className="button button--outline" type="button" onClick={() => setDeleteImagePageId("")}>
+                  Cancel
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
           </div>
         </div>
       </div>
@@ -4869,6 +5818,7 @@ function Site() {
   const [donationOpen, setDonationOpen] = useState(false);
   const openDonation = () => setDonationOpen(true);
   const closeDonation = () => setDonationOpen(false);
+  const isStaffPortalRoute = pathname === "/staff_portal" || pathname === "/staff-portal";
 
   useEffect(() => {
     ensurePortalSeedData();
@@ -4879,8 +5829,10 @@ function Site() {
       <ScrollToTop />
       <PageMetadata />
       <MotionEffects />
+      <NetworkAddressRefresh />
+      <SiteContentOverrides />
       <div className="scroll-progress" aria-hidden="true" />
-      <Header onDonate={openDonation} />
+      {isStaffPortalRoute ? null : <Header onDonate={openDonation} />}
       <main className="route-stage" key={pathname}>
         <Routes>
           <Route path="/" element={<HomePage onDonate={openDonation} />} />
@@ -4918,7 +5870,7 @@ function Site() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <Footer onDonate={openDonation} />
+      {isStaffPortalRoute ? null : <Footer onDonate={openDonation} />}
       <DonationModal open={donationOpen} onClose={closeDonation} />
     </>
   );
