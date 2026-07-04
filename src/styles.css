@@ -3041,3 +3041,152 @@ footer { border-top: 1px solid var(--line); background: #090908; }
   .reveal { opacity: 1; transform: none; }
   .cursor-light, .scroll-progress { display: none; }
 }
+
+.admin-login-modal { max-width: 560px; }
+.admin-login-modal iframe { display: none; }
+.admin-login-modal__form { padding: 0 28px 28px; }
+.admin-login-modal__forgot {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: not-allowed;
+}
+.management-portal {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  color: var(--ivory);
+  background: #070706;
+}
+.management-portal__sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-right: 1px solid rgba(201, 153, 78, 0.22);
+  padding: 28px;
+  background: rgba(8, 8, 7, 0.96);
+}
+.management-portal__sidebar img { width: 72px; height: 72px; object-fit: contain; }
+.management-portal__sidebar > strong { font-family: var(--serif); font-size: 1.6rem; }
+.management-portal__sidebar nav { display: grid; gap: 8px; }
+.management-portal__sidebar a,
+.management-portal__sidebar button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(201, 153, 78, 0.18);
+  padding: 0 14px;
+  color: var(--ivory);
+  background: rgba(255, 255, 255, 0.02);
+  text-decoration: none;
+}
+.management-portal__sidebar a.active,
+.management-portal__sidebar a:hover,
+.management-portal__sidebar button:hover {
+  border-color: rgba(224, 187, 121, 0.56);
+  color: var(--gold-light);
+}
+.management-portal__sidebar button { margin-top: auto; cursor: pointer; }
+.management-portal__main { min-width: 0; padding: 30px; }
+.management-portal__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid rgba(201, 153, 78, 0.18);
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.management-portal__topbar span,
+.portal-screen__heading p,
+.portal-card p,
+.portal-activity-list small { color: var(--muted); }
+.management-portal__topbar h1 {
+  margin: 4px 0 0;
+  font-size: clamp(1.8rem, 3vw, 3rem);
+}
+.portal-screen,
+.portal-loading { padding: 28px 0; }
+.portal-screen__heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.portal-screen__heading svg { color: var(--gold-light); }
+.portal-screen__heading h2 { margin: 0; font-size: clamp(1.8rem, 3vw, 2.7rem); }
+.portal-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.portal-summary-grid article,
+.portal-card {
+  border: 1px solid rgba(201, 153, 78, 0.18);
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.portal-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.portal-summary-grid strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--gold-light);
+  font-size: 1.45rem;
+}
+.portal-card { margin-top: 18px; }
+.portal-activity-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.portal-activity-list li,
+.portal-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(201, 153, 78, 0.12);
+  padding: 10px 0;
+}
+.portal-status-row .is-good { color: #89d99a; }
+.portal-status-row .is-warning { color: var(--gold-light); }
+.portal-mfa-enroll img {
+  width: 220px;
+  height: 220px;
+  border: 10px solid #fff;
+  background: #fff;
+}
+.portal-recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.portal-recovery-grid code,
+.portal-mfa-enroll code { color: var(--gold-light); }
+.portal-denied {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
+@media (max-width: 900px) {
+  .management-portal { grid-template-columns: 1fr; }
+  .management-portal__sidebar { position: static; height: auto; }
+  .portal-summary-grid { grid-template-columns: 1fr; }
+}
