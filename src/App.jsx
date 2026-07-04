@@ -1873,7 +1873,25 @@ function MinistriesPage({ onDonate }) {
 }
 
 function LeadershipPage({ onDonate }) {
-  const leadershipSource = leadershipStaffSeeds.map(createSeededLeadershipUser);
+  const [serverLeadershipUsers, setServerLeadershipUsers] = useState([]);
+
+  useEffect(() => {
+    apiRequest("/api/public/leadership")
+      .then((result) => setServerLeadershipUsers(Array.isArray(result.users) ? result.users : []))
+      .catch(() => setServerLeadershipUsers([]));
+  }, []);
+
+  const seededLeaders = leadershipStaffSeeds.map(createSeededLeadershipUser);
+  const pinnedSeededLeaders = seededLeaders.filter(isPinnedLeadershipUser);
+  const serverLeadership = serverLeadershipUsers.map((user) => ({
+    ...createSeededLeadershipUser(user),
+    ...user,
+    showOnLeadership: true,
+  }));
+  const serverIds = new Set(serverLeadership.map((user) => String(user.email || user.name || "").toLowerCase()));
+  const leadershipSource = serverLeadership.length
+    ? [...pinnedSeededLeaders, ...serverLeadership.filter((user) => !serverIds.has(String(user.email || user.name || "").toLowerCase()) || !isPinnedLeadershipUser(user))]
+    : seededLeaders;
   const leadershipUsers = leadershipSource.filter(shouldShowOnLeadership);
   const pinnedLeaders = leadershipUsers.filter(isPinnedLeadershipUser);
   const rosterLeaders = leadershipUsers.filter((user) => !isPinnedLeadershipUser(user));

@@ -3122,8 +3122,28 @@ footer { border-top: 1px solid var(--line); background: #090908; }
   gap: 16px;
   margin-bottom: 22px;
 }
+.portal-screen__heading--split {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.portal-screen__heading--split > div {
+  display: grid;
+  gap: 8px;
+}
+.icon-flip { transform: rotate(180deg); }
 .portal-screen__heading svg { color: var(--gold-light); }
 .portal-screen__heading h2 { margin: 0; font-size: clamp(1.8rem, 3vw, 2.7rem); }
+.button--danger {
+  border-color: rgba(224, 92, 92, 0.64);
+  color: #ffd6d6;
+  background: rgba(150, 28, 28, 0.22);
+}
+.form-success {
+  border: 1px solid rgba(137, 217, 154, 0.35);
+  padding: 12px 14px;
+  color: #baf0c4;
+  background: rgba(42, 128, 69, 0.14);
+}
 .portal-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3165,6 +3185,105 @@ footer { border-top: 1px solid var(--line); background: #090908; }
 }
 .portal-status-row .is-good { color: #89d99a; }
 .portal-status-row .is-warning { color: var(--gold-light); }
+.staff-create-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.staff-create-form h3,
+.staff-create-form .role-picker,
+.staff-create-form .button { grid-column: 1 / -1; }
+.portal-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.portal-check input,
+.role-picker input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--gold);
+}
+.role-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.role-picker label {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(201, 153, 78, 0.18);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.staff-list {
+  display: grid;
+  gap: 10px;
+}
+.staff-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.5fr 1.2fr 0.8fr 48px 90px;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid rgba(201, 153, 78, 0.18);
+  padding: 16px;
+  color: var(--ivory);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+.staff-row:hover {
+  border-color: rgba(224, 187, 121, 0.58);
+  background: rgba(224, 187, 121, 0.055);
+}
+.staff-row strong,
+.staff-row small { display: block; }
+.staff-row small,
+.staff-row span:not(:first-child) { color: var(--muted); }
+.staff-row .is-good { color: #89d99a; }
+.staff-row .is-warning { color: var(--gold-light); }
+.staff-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.8fr);
+  gap: 18px;
+}
+.staff-detail-grid .portal-card:last-child { grid-column: 1 / -1; }
+.staff-profile-editor {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.staff-profile-editor > div:last-child {
+  display: grid;
+  gap: 12px;
+}
+.staff-profile-photo {
+  width: 86px;
+  height: 86px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(224, 187, 121, 0.45);
+  border-radius: 50%;
+  color: var(--gold-light);
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  background: rgba(224, 187, 121, 0.1);
+}
+.staff-profile-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.staff-security-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
 .portal-mfa-enroll img {
   width: 220px;
   height: 220px;
@@ -3189,4 +3308,9 @@ footer { border-top: 1px solid var(--line); background: #090908; }
   .management-portal { grid-template-columns: 1fr; }
   .management-portal__sidebar { position: static; height: auto; }
   .portal-summary-grid { grid-template-columns: 1fr; }
+  .staff-create-form,
+  .staff-detail-grid,
+  .staff-profile-editor,
+  .role-picker,
+  .staff-row { grid-template-columns: 1fr; }
 }

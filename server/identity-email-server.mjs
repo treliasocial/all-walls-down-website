@@ -3,12 +3,15 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import QRCode from "qrcode";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, "../data");
-const dbPath = path.join(dataDir, "portal-db.json");
+const dbPath = path.join(dataDir, "portal.sqlite");
+const legacyJsonDbPath = path.join(dataDir, "portal-db.json");
+const legacyJsonBackupPath = path.join(dataDir, "portal-db.backup.json");
 const port = Number(process.env.AWD_API_PORT || 8787);
 const frontendPort = Number(process.env.AWD_FRONTEND_PORT || 5173);
 const isProduction = process.env.NODE_ENV === "production";
@@ -73,6 +76,8 @@ const allPermissions = [
   "settings.read",
   "settings.update",
 ];
+const roleNames = Object.keys(rolePermissions);
+const editableUserFields = ["name", "title", "ministry", "phone", "bio", "image", "showOnLeadership", "isActive"];
 
 const defaultDb = {
   meta: { schemaVersion: 1, createdAt: new Date().toISOString() },
@@ -90,6 +95,25 @@ const defaultDb = {
     publicSiteUrl: process.env.AWD_PUBLIC_SITE_URL || "http://localhost:5173",
     donationProvider: "Zeffy",
   },
+};
+
+const jsonColumns = {
+  users: ["roles", "recoveryCodes"],
+  auditLogs: ["metadata"],
+  securityEvents: ["metadata"],
+};
+
+const tablePrimaryKeys = {
+  users: "id",
+  sessions: "id",
+  loginChallenges: "id",
+  contacts: "id",
+  prayerRequests: "id",
+  testimonials: "id",
+  donations: "id",
+  auditLogs: "id",
+  securityEvents: "id",
+  settings: "key",
 };
 
 const privateIpv4Ranges = [/^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./];
@@ -193,6 +217,12 @@ const safeUser = (user) => ({
   id: user.id,
   name: user.name,
   email: user.email,
+  title: user.title || "",
+  ministry: user.ministry || "",
+  phone: user.phone || "",
+  bio: user.bio || "",
+  image: user.image || "",
+  showOnLeadership: Boolean(user.showOnLeadership),
   roles: user.roles || [],
   permissions: getPermissions(user),
   isActive: user.isActive !== false,
@@ -202,6 +232,17 @@ const safeUser = (user) => ({
   requirePasswordReset: Boolean(user.requirePasswordReset),
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
+  deactivatedAt: user.deactivatedAt || "",
+});
+
+const publicStaffUser = (user) => ({
+  id: user.id,
+  name: user.name,
+  title: user.title || "",
+  ministry: user.ministry || "",
+  bio: user.bio || "",
+  image: user.image || "",
+  showOnLeadership: Boolean(user.showOnLeadership),
 });
 
 const getPermissions = (user) => {
@@ -211,34 +252,230 @@ const getPermissions = (user) => {
 };
 
 const hasPermission = (user, permission) => getPermissions(user).includes(permission);
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const sanitizeRoles = (roles) => [...new Set((Array.isArray(roles) ? roles : []).filter((role) => roleNames.includes(role)))];
+const randomPassword = () => `${crypto.randomBytes(9).toString("base64url")}A1!`;
+const leadershipPinnedNames = ["monta", "kim"];
+const isPinnedLeadershipUser = (user) => {
+  const name = String(user?.name || "").toLowerCase();
+  return leadershipPinnedNames.some((item) => name.includes(item));
+};
+
+const staffPayload = (user, db) => ({
+  ...safeUser(user),
+  activeSessions: db.sessions.filter((session) => session.userId === user.id && !session.revokedAt && new Date(session.expiresAt).getTime() > Date.now()).length,
+});
+
+const userAuditHistory = (db, userId) =>
+  db.auditLogs
+    .filter((item) => item.entityType === "user" && item.entityId === userId)
+    .slice(0, 30);
+
+let sqlDb;
+
+const openSqlDb = async () => {
+  if (sqlDb) return sqlDb;
+  await fs.mkdir(dataDir, { recursive: true });
+  sqlDb = new DatabaseSync(dbPath);
+  sqlDb.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      title TEXT DEFAULT '',
+      ministry TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      bio TEXT DEFAULT '',
+      image TEXT DEFAULT '',
+      showOnLeadership INTEGER DEFAULT 0,
+      passwordHash TEXT NOT NULL,
+      roles TEXT NOT NULL,
+      isActive INTEGER DEFAULT 1,
+      mfaRequired INTEGER DEFAULT 1,
+      mfaEnabled INTEGER DEFAULT 0,
+      mfaEnrolledAt TEXT DEFAULT '',
+      totpSecret TEXT,
+      pendingTotpSecret TEXT,
+      recoveryCodes TEXT DEFAULT '[]',
+      requirePasswordReset INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      deactivatedAt TEXT DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      tokenHash TEXT NOT NULL UNIQUE,
+      mfaVerified INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      lastSeenAt TEXT,
+      idleExpiresAt TEXT,
+      revokedAt TEXT DEFAULT '',
+      ipAddress TEXT DEFAULT '',
+      userAgent TEXT DEFAULT '',
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS loginChallenges (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT DEFAULT 'New', submittedAt TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS prayerRequests (id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT DEFAULT 'Pending', submittedAt TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS testimonials (id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT DEFAULT 'Pending Review', submittedAt TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS donations (id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT DEFAULT '', submittedAt TEXT DEFAULT '');
+    CREATE TABLE IF NOT EXISTS auditLogs (
+      id TEXT PRIMARY KEY,
+      actorUserId TEXT,
+      actorEmail TEXT,
+      action TEXT NOT NULL,
+      entityType TEXT,
+      entityId TEXT,
+      ipAddress TEXT DEFAULT '',
+      userAgent TEXT DEFAULT '',
+      metadata TEXT DEFAULT '{}',
+      createdAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS securityEvents (
+      id TEXT PRIMARY KEY,
+      action TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      actorUserId TEXT,
+      actorEmail TEXT,
+      ipAddress TEXT DEFAULT '',
+      userAgent TEXT DEFAULT '',
+      metadata TEXT DEFAULT '{}',
+      createdAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+  return sqlDb;
+};
+
+const parseJson = (value, fallback) => {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeSqlRow = (table, row) => {
+  if (!row) return row;
+  const normalized = { ...row };
+  for (const column of jsonColumns[table] || []) normalized[column] = parseJson(normalized[column], column === "metadata" ? {} : []);
+  for (const key of ["showOnLeadership", "isActive", "mfaRequired", "mfaEnabled", "requirePasswordReset", "mfaVerified"]) {
+    if (key in normalized) normalized[key] = Boolean(normalized[key]);
+  }
+  if (table === "contacts" || table === "prayerRequests" || table === "testimonials" || table === "donations") {
+    return { ...parseJson(normalized.payload, {}), id: normalized.id, status: normalized.status, submittedAt: normalized.submittedAt };
+  }
+  return normalized;
+};
+
+const readSqlTable = (database, table, orderBy = "") =>
+  database.prepare(`SELECT * FROM ${table}${orderBy ? ` ORDER BY ${orderBy}` : ""}`).all().map((row) => normalizeSqlRow(table, row));
+
+const upsertRows = (database, table, rows) => {
+  const key = tablePrimaryKeys[table];
+  for (const row of rows) {
+    let payload = { ...row };
+    if (table === "contacts" || table === "prayerRequests" || table === "testimonials" || table === "donations") {
+      payload = { id: row.id, status: row.status || "", submittedAt: row.submittedAt || "", payload: JSON.stringify(row) };
+    }
+    for (const column of jsonColumns[table] || []) payload[column] = JSON.stringify(payload[column] || (column === "metadata" ? {} : []));
+    for (const keyName of ["showOnLeadership", "isActive", "mfaRequired", "mfaEnabled", "requirePasswordReset", "mfaVerified"]) {
+      if (keyName in payload) payload[keyName] = payload[keyName] ? 1 : 0;
+    }
+    const columns = Object.keys(payload);
+    const placeholders = columns.map(() => "?").join(", ");
+    const updates = columns.filter((column) => column !== key).map((column) => `${column} = excluded.${column}`).join(", ");
+    database.prepare(`INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(${key}) DO UPDATE SET ${updates}`).run(...columns.map((column) => payload[column] ?? ""));
+  }
+};
+
+const migrateLegacyJson = async (database) => {
+  const userCount = database.prepare("SELECT COUNT(*) AS count FROM users").get().count;
+  if (userCount) return;
+  let legacyDb = null;
+  for (const legacyPath of [legacyJsonDbPath, legacyJsonBackupPath]) {
+    try {
+      const candidate = JSON.parse(await fs.readFile(legacyPath, "utf8"));
+      if (candidate.users?.length) {
+        legacyDb = candidate;
+        break;
+      }
+    } catch {
+      // Ignore missing or invalid legacy files.
+    }
+  }
+  if (legacyDb) await writeDb({ ...structuredClone(defaultDb), ...legacyDb });
+};
 
 const loadDb = async () => {
-  await fs.mkdir(dataDir, { recursive: true });
-  let db;
-  try {
-    db = JSON.parse(await fs.readFile(dbPath, "utf8"));
-  } catch {
-    db = structuredClone(defaultDb);
-  }
-  db = { ...structuredClone(defaultDb), ...db };
-  db.settings = { ...defaultDb.settings, ...(db.settings || {}) };
-  await bootstrapAdmin(db);
-  await writeDb(db);
+  const database = await openSqlDb();
+  await migrateLegacyJson(database);
+  const settingsRows = database.prepare("SELECT key, value FROM settings").all();
+  const db = {
+    ...structuredClone(defaultDb),
+    users: readSqlTable(database, "users", "createdAt DESC"),
+    sessions: readSqlTable(database, "sessions", "createdAt DESC"),
+    loginChallenges: readSqlTable(database, "loginChallenges", "expiresAt DESC"),
+    contacts: readSqlTable(database, "contacts", "submittedAt DESC"),
+    prayerRequests: readSqlTable(database, "prayerRequests", "submittedAt DESC"),
+    testimonials: readSqlTable(database, "testimonials", "submittedAt DESC"),
+    donations: readSqlTable(database, "donations", "submittedAt DESC"),
+    auditLogs: readSqlTable(database, "auditLogs", "createdAt DESC"),
+    securityEvents: readSqlTable(database, "securityEvents", "createdAt DESC"),
+    settings: {
+      ...defaultDb.settings,
+      ...Object.fromEntries(settingsRows.map((row) => [row.key, row.value])),
+    },
+  };
+  const bootstrapped = await bootstrapAdmin(db);
+  if (bootstrapped) await writeDb(db);
   return db;
 };
 
-const writeDb = async (db) => fs.writeFile(dbPath, JSON.stringify(db, null, 2));
+const writeDb = async (db) => {
+  const database = await openSqlDb();
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    upsertRows(database, "users", db.users || []);
+    upsertRows(database, "sessions", db.sessions || []);
+    upsertRows(database, "loginChallenges", db.loginChallenges || []);
+    upsertRows(database, "contacts", db.contacts || []);
+    upsertRows(database, "prayerRequests", db.prayerRequests || []);
+    upsertRows(database, "testimonials", db.testimonials || []);
+    upsertRows(database, "donations", db.donations || []);
+    upsertRows(database, "auditLogs", db.auditLogs || []);
+    upsertRows(database, "securityEvents", db.securityEvents || []);
+    const nextSettings = db.settings || defaultDb.settings;
+    for (const [key, value] of Object.entries(nextSettings)) {
+      database.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, String(value));
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+};
 
 const markDbForWrite = (db) => {
   Object.defineProperty(db, "__needsWrite", { value: true, writable: true, enumerable: false, configurable: true });
 };
 
 const bootstrapAdmin = async (db) => {
-  if (db.users.length) return;
+  if (db.users.length) return false;
   const email = process.env.AWD_ADMIN_EMAIL;
   const name = process.env.AWD_ADMIN_NAME;
   const password = process.env.AWD_ADMIN_BOOTSTRAP_PASSWORD;
-  if (!email || !name || !password || password.length < 12 || !getSessionSecret()) return;
+  if (!email || !name || !password || password.length < 12 || !getSessionSecret()) return false;
   const now = new Date().toISOString();
   const user = {
     id: id("user"),
@@ -255,6 +492,7 @@ const bootstrapAdmin = async (db) => {
   };
   db.users.push(user);
   writeAudit(db, null, "user.bootstrap", "user", user.id, { email: user.email });
+  return true;
 };
 
 const clientIp = (request) => request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket.remoteAddress || "";
@@ -657,6 +895,60 @@ const routes = {
     sendJson(request, response, 200, { auditLogs: db.auditLogs.slice(0, 200), securityEvents: db.securityEvents.slice(0, 100) });
   },
 
+  "GET /api/users": async (request, response, db) => {
+    const auth = requireAuth(request, response, db, "users.read");
+    if (!auth) return;
+    sendJson(request, response, 200, {
+      users: db.users.map((user) => staffPayload(user, db)),
+      roles: roleNames,
+    });
+  },
+
+  "POST /api/users": async (request, response, db) => {
+    const auth = requireAuth(request, response, db, "users.create");
+    if (!auth) return;
+    const body = await readBody(request);
+    const email = normalizeEmail(body.email);
+    if (!isValidEmail(email)) return sendJson(request, response, 400, { error: "Enter a valid staff email address." });
+    if (db.users.some((user) => user.email === email)) return sendJson(request, response, 409, { error: "A staff account already exists for this email." });
+    const roles = sanitizeRoles(body.roles);
+    if (!roles.length) return sendJson(request, response, 400, { error: "Select at least one role." });
+    if (!hasPermission(auth.user, "roles.manage") && roles.join("|") !== "Read Only") return sendJson(request, response, 403, { error: "Role management permission is required." });
+    const password = String(body.temporaryPassword || "").trim() || randomPassword();
+    if (password.length < 12) return sendJson(request, response, 400, { error: "Temporary password must be at least 12 characters." });
+    const now = new Date().toISOString();
+    const user = {
+      id: id("user"),
+      name: String(body.name || email).trim(),
+      email,
+      title: String(body.title || "").trim(),
+      ministry: String(body.ministry || "").trim(),
+      phone: String(body.phone || "").trim(),
+      bio: String(body.bio || "").trim(),
+      image: String(body.image || "").trim(),
+      showOnLeadership: Boolean(body.showOnLeadership),
+      passwordHash: hashSecret(password),
+      roles,
+      isActive: true,
+      mfaRequired: true,
+      mfaEnabled: false,
+      requirePasswordReset: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.users.push(user);
+    writeAudit(db, auth, "user.created", "user", user.id, { email: user.email, roles });
+    await writeDb(db);
+    sendJson(request, response, 201, { user: staffPayload(user, db), temporaryPassword: body.temporaryPassword ? undefined : password });
+  },
+
+  "GET /api/public/leadership": async (request, response, db) => {
+    const users = db.users
+      .filter((user) => user.isActive !== false && (user.showOnLeadership || isPinnedLeadershipUser(user)))
+      .map(publicStaffUser);
+    sendJson(request, response, 200, { users });
+  },
+
   "POST /api/public/contact": async (request, response, db) => {
     const body = await readBody(request);
     db.contacts.unshift({ id: id("contact"), ...body, status: "New", submittedAt: new Date().toISOString() });
@@ -679,10 +971,141 @@ const routes = {
   },
 };
 
+const handleUserRoute = async (request, response, db, url) => {
+  const match = url.pathname.match(/^\/api\/users\/([^/]+)(?:\/([^/]+))?$/);
+  if (!match) return false;
+  const [, userId, action] = match;
+  const user = db.users.find((item) => item.id === userId);
+  if (!user) {
+    const auth = requireAuth(request, response, db, "users.read");
+    if (!auth) return true;
+    sendJson(request, response, 404, { error: "Staff account not found." });
+    return true;
+  }
+
+  if (request.method === "GET" && !action) {
+    const auth = requireAuth(request, response, db, "users.read");
+    if (!auth) return true;
+    sendJson(request, response, 200, { user: staffPayload(user, db), auditHistory: userAuditHistory(db, user.id), roles: roleNames });
+    return true;
+  }
+
+  if (request.method === "PATCH" && !action) {
+    const auth = requireAuth(request, response, db, "users.update");
+    if (!auth) return true;
+    const body = await readBody(request);
+    if (Array.isArray(body.roles)) {
+      if (!hasPermission(auth.user, "roles.manage")) return sendJson(request, response, 403, { error: "Role management permission is required." });
+      const roles = sanitizeRoles(body.roles);
+      if (!roles.length) return sendJson(request, response, 400, { error: "Select at least one role." });
+      user.roles = roles;
+    }
+    for (const field of editableUserFields) {
+      if (Object.hasOwn(body, field)) {
+        user[field] = field === "showOnLeadership" || field === "isActive" ? Boolean(body[field]) : String(body[field] || "").trim();
+      }
+    }
+    user.updatedAt = new Date().toISOString();
+    writeAudit(db, auth, "user.updated", "user", user.id, { fields: Object.keys(body).filter((field) => field !== "temporaryPassword") }, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db), auditHistory: userAuditHistory(db, user.id) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "force-password-reset") {
+    const auth = requireAuth(request, response, db, "users.update");
+    if (!auth) return true;
+    user.requirePasswordReset = true;
+    user.updatedAt = new Date().toISOString();
+    writeAudit(db, auth, "user.password_reset_required", "user", user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "reset-mfa") {
+    const auth = requireAuth(request, response, db, "security.manage");
+    if (!auth) return true;
+    delete user.totpSecret;
+    delete user.pendingTotpSecret;
+    user.mfaEnabled = false;
+    user.mfaRequired = true;
+    user.mfaEnrolledAt = "";
+    user.updatedAt = new Date().toISOString();
+    db.sessions.forEach((session) => {
+      if (session.userId === user.id && !session.revokedAt) session.revokedAt = new Date().toISOString();
+    });
+    writeAudit(db, auth, "user.mfa_reset", "user", user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "revoke-sessions") {
+    const auth = requireAuth(request, response, db, "security.manage");
+    if (!auth) return true;
+    db.sessions.forEach((session) => {
+      if (session.userId === user.id && !session.revokedAt) session.revokedAt = new Date().toISOString();
+    });
+    writeAudit(db, auth, "user.sessions_revoked", "user", user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "deactivate") {
+    const auth = requireAuth(request, response, db, "users.deactivate");
+    if (!auth) return true;
+    user.isActive = false;
+    user.showOnLeadership = false;
+    user.deactivatedAt = new Date().toISOString();
+    user.updatedAt = user.deactivatedAt;
+    db.sessions.forEach((session) => {
+      if (session.userId === user.id && !session.revokedAt) session.revokedAt = new Date().toISOString();
+    });
+    writeAudit(db, auth, "user.deactivated", "user", user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "offboard") {
+    const auth = requireAuth(request, response, db, "users.deactivate");
+    if (!auth) return true;
+    user.isActive = false;
+    user.showOnLeadership = false;
+    user.roles = ["Read Only"];
+    user.deactivatedAt = new Date().toISOString();
+    user.updatedAt = user.deactivatedAt;
+    delete user.totpSecret;
+    delete user.pendingTotpSecret;
+    db.sessions.forEach((session) => {
+      if (session.userId === user.id && !session.revokedAt) session.revokedAt = new Date().toISOString();
+    });
+    writeAudit(db, auth, "user.offboarded", "user", user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "invite") {
+    const auth = requireAuth(request, response, db, "users.create");
+    if (!auth) return true;
+    writeAudit(db, auth, "user.invite_staged", "user", user.id, { email: user.email }, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { ok: true, message: "Invitation staged. Email delivery will be enabled in the mail settings release." });
+    return true;
+  }
+
+  sendJson(request, response, 404, { error: "Not found" });
+  return true;
+};
+
 const server = http.createServer(async (request, response) => {
   const db = await loadDb();
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (request.method === "OPTIONS") return sendJson(request, response, 204, {});
+  if (await handleUserRoute(request, response, db, url)) return;
   const handler = routes[`${request.method} ${url.pathname}`];
   if (!handler) return sendJson(request, response, 404, { error: "Not found" });
   try {
