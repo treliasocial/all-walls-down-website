@@ -77,7 +77,7 @@ const allPermissions = [
   "settings.update",
 ];
 const roleNames = Object.keys(rolePermissions);
-const editableUserFields = ["name", "title", "ministry", "phone", "bio", "image", "showOnLeadership", "isActive"];
+const editableUserFields = ["name", "title", "ministry", "phone", "bio", "image", "notes", "showOnLeadership", "isActive"];
 
 const defaultDb = {
   meta: { schemaVersion: 1, createdAt: new Date().toISOString() },
@@ -222,6 +222,7 @@ const safeUser = (user) => ({
   phone: user.phone || "",
   bio: user.bio || "",
   image: user.image || "",
+  notes: user.notes || "",
   showOnLeadership: Boolean(user.showOnLeadership),
   roles: user.roles || [],
   permissions: getPermissions(user),
@@ -354,6 +355,8 @@ const openSqlDb = async () => {
     );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
+  const userColumns = new Set(sqlDb.prepare("PRAGMA table_info(users)").all().map((column) => column.name));
+  if (!userColumns.has("notes")) sqlDb.exec("ALTER TABLE users ADD COLUMN notes TEXT DEFAULT ''");
   return sqlDb;
 };
 
@@ -1085,6 +1088,20 @@ const handleUserRoute = async (request, response, db, url) => {
     writeAudit(db, auth, "user.offboarded", "user", user.id, {}, request);
     await writeDb(db);
     sendJson(request, response, 200, { user: staffPayload(user, db) });
+    return true;
+  }
+
+  if (request.method === "POST" && action === "delete") {
+    const auth = requireAuth(request, response, db, "users.deactivate");
+    if (!auth) return true;
+    if (auth.user.id === user.id) return sendJson(request, response, 400, { error: "You cannot delete your own staff account." });
+    db.sessions = db.sessions.filter((session) => session.userId !== user.id);
+    db.users = db.users.filter((staffUser) => staffUser.id !== user.id);
+    writeAudit(db, auth, "user.deleted", "user", user.id, { email: user.email }, request);
+    await writeDb(db);
+    const database = await openSqlDb();
+    database.prepare("DELETE FROM users WHERE id = ?").run(user.id);
+    sendJson(request, response, 200, { deleted: true, message: "Staff account deleted." });
     return true;
   }
 
