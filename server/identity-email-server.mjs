@@ -255,12 +255,15 @@ const getPermissions = (user) => {
 const hasPermission = (user, permission) => getPermissions(user).includes(permission);
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-const sanitizeRoles = (roles) => [...new Set((Array.isArray(roles) ? roles : []).filter((role) => roleNames.includes(role)))];
+const sanitizeRoles = (roles) => {
+  const assigned = [...new Set((Array.isArray(roles) ? roles : []).filter((role) => roleNames.includes(role)))];
+  return assigned.length > 1 ? assigned.filter((role) => role !== "Read Only") : assigned;
+};
 const randomPassword = () => `${crypto.randomBytes(9).toString("base64url")}A1!`;
 const leadershipPinnedNames = ["monta", "kim"];
 const isPinnedLeadershipUser = (user) => {
   const name = String(user?.name || "").toLowerCase();
-  return leadershipPinnedNames.some((item) => name.includes(item));
+  return leadershipPinnedNames.some((item) => new RegExp(`(^|\\s|\\W)${item}(\\s|\\W|$)`, "i").test(name));
 };
 
 const staffPayload = (user, db) => ({
@@ -420,6 +423,32 @@ const migrateLegacyJson = async (database) => {
   if (legacyDb) await writeDb({ ...structuredClone(defaultDb), ...legacyDb });
 };
 
+const sampleCrmContacts = () => {
+  const now = Date.now();
+  return [
+    ["contact_sample_1", "Michelle Johnson", "michelle.johnson@example.com", "(214) 555-0182", "Partnership", "New", "High", "Communications", "2026-07-12", "Interested in partnering for a community outreach weekend.", "Called once, wants a ministry overview packet."],
+    ["contact_sample_2", "David Anderson", "david.anderson@example.com", "(214) 555-0144", "Volunteer", "In Progress", "Normal", "Prayer Team", "2026-07-09", "Asked how to volunteer with family support and outreach events.", "Send volunteer onboarding steps."],
+    ["contact_sample_3", "Tiffany Brooks", "tiffany.brooks@example.com", "(972) 555-0199", "Speaking Request", "Follow-Up Needed", "Urgent", "Leadership Team", "2026-07-06", "Requested an AWD speaker for a youth leadership gathering.", "Needs a call back before Friday."],
+    ["contact_sample_4", "Marcus Williams", "marcus.williams@example.com", "(469) 555-0173", "General Contact", "Resolved", "Low", "Communications", "", "Asked for general information about All Walls Down.", "Information sent by email."],
+    ["contact_sample_5", "Alicia Thompson", "alicia.thompson@example.com", "(817) 555-0128", "Ministry Support", "New", "Normal", "Content Ministry", "2026-07-15", "Looking for ministry resources for a local small group.", ""],
+  ].map(([idValue, name, email, phone, reason, status, priority, assignedTo, followUpDate, message, notes], index) => ({
+    id: idValue,
+    name,
+    email,
+    phone,
+    reason,
+    status,
+    priority,
+    assignedTo,
+    followUpDate,
+    message,
+    notes,
+    activity: notes ? [{ note: notes, actor: "System sample", createdAt: new Date(now - index * 86400000).toISOString() }] : [],
+    submittedAt: new Date(now - (index + 1) * 7200000).toISOString(),
+    updatedAt: new Date(now - index * 3600000).toISOString(),
+  }));
+};
+
 const loadDb = async () => {
   const database = await openSqlDb();
   await migrateLegacyJson(database);
@@ -441,7 +470,13 @@ const loadDb = async () => {
     },
   };
   const bootstrapped = await bootstrapAdmin(db);
-  if (bootstrapped) await writeDb(db);
+  const seededLeadershipAccounts = ensureLeadershipAccounts(db);
+  let seededContacts = false;
+  if (!db.contacts.length && process.env.AWD_SEED_SAMPLE_CONTACTS !== "false") {
+    db.contacts = sampleCrmContacts();
+    seededContacts = true;
+  }
+  if (bootstrapped || seededLeadershipAccounts || seededContacts) await writeDb(db);
   return db;
 };
 
@@ -498,6 +533,63 @@ const bootstrapAdmin = async (db) => {
   return true;
 };
 
+const ensureLeadershipAccounts = (db) => {
+  const now = new Date().toISOString();
+  const leaders = [
+    { name: "Monta (Ta') Cheathem", email: "monta.cheathem@allwallsdown.org", title: "Founder / Director", ministry: "Brothers Keepers" },
+    { name: "Kim Cheathem", email: "kim.cheathem@allwallsdown.org", title: "Founder / Director", ministry: "Daughters of the King" },
+    { name: "Levell Cheathem", email: "levell.cheathem@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Antoine Herron", email: "antoine.herron@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Stephen MacKenzie", email: "stephen.mackenzie@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Chris Smith", email: "chris.smith@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Dr. Josh Snyder", email: "josh.snyder@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Emilio Jesus Ortega", email: "emilio.ortega@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Adrian Ahtone", email: "adrian.ahtone@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Justin Hamlin", email: "justin.hamlin@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Mon Lorenzo", email: "mon.lorenzo@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Bobby Lowe", email: "bobby.lowe@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Andrew Kirkland", email: "andrew.kirkland@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+    { name: "Mike Best", email: "mike.best@allwallsdown.org", title: "Core Leadership", ministry: "Brothers Keepers" },
+  ];
+  let changed = false;
+  for (const leader of leaders) {
+    const existing = db.users.find((user) => normalizeEmail(user.email) === leader.email);
+    if (existing) {
+      for (const [key, value] of Object.entries({ title: leader.title, ministry: leader.ministry, showOnLeadership: true, isActive: true })) {
+        if (existing[key] !== value) {
+          existing[key] = value;
+          changed = true;
+        }
+      }
+      continue;
+    }
+    const user = {
+      id: id("user"),
+      name: leader.name,
+      email: leader.email,
+      title: leader.title,
+      ministry: leader.ministry,
+      phone: "",
+      bio: "",
+      image: "",
+      notes: "Seeded ministry leader account.",
+      showOnLeadership: true,
+      passwordHash: hashSecret(randomPassword()),
+      roles: ["Read Only"],
+      isActive: true,
+      mfaRequired: true,
+      mfaEnabled: false,
+      requirePasswordReset: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.users.push(user);
+    writeAudit(db, null, "user.leadership_seeded", "user", user.id, { email: user.email });
+    changed = true;
+  }
+  return changed;
+};
+
 const clientIp = (request) => request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket.remoteAddress || "";
 const userAgent = (request) => request.headers["user-agent"] || "";
 
@@ -533,14 +625,23 @@ const writeSecurityEvent = (db, request, action, severity, metadata = {}, auth =
   writeAudit(db, auth, action, "securityEvent", null, { severity, ...metadata }, request);
 };
 
-const securityHeaders = () => ({
-  "Content-Security-Policy": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://localhost:8787 http://127.0.0.1:8787",
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
-  "X-Frame-Options": "SAMEORIGIN",
-  ...(isProduction ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
-});
+const securityHeaders = () => {
+  const wifiAddress = getWifiAddress();
+  const connectSources = [
+    "'self'",
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`,
+    ...(wifiAddress ? [`http://${wifiAddress}:${port}`] : []),
+  ];
+  return {
+    "Content-Security-Policy": `default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ${connectSources.join(" ")}`,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "X-Frame-Options": "SAMEORIGIN",
+    ...(isProduction ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" } : {}),
+  };
+};
 
 const corsHeaders = (request) => {
   const origin = request.headers.origin;
@@ -549,7 +650,7 @@ const corsHeaders = (request) => {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Headers": "content-type",
-    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
     Vary: "Origin",
   };
 };
@@ -796,6 +897,37 @@ const routes = {
     });
   },
 
+  "PATCH /api/auth/me": async (request, response, db) => {
+    const auth = requireAuth(request, response, db);
+    if (!auth) return;
+    const body = await readBody(request);
+    for (const field of ["name", "title", "ministry", "phone", "bio", "image", "notes", "showOnLeadership"]) {
+      if (Object.hasOwn(body, field)) {
+        auth.user[field] = field === "showOnLeadership" ? Boolean(body[field]) : String(body[field] || "").trim();
+      }
+    }
+    auth.user.updatedAt = new Date().toISOString();
+    writeAudit(db, auth, "profile.updated", "user", auth.user.id, { fields: Object.keys(body) }, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { user: safeUser(auth.user) });
+  },
+
+  "POST /api/auth/change-password": async (request, response, db) => {
+    const auth = requireAuth(request, response, db);
+    if (!auth) return;
+    const body = await readBody(request);
+    const currentPassword = String(body.currentPassword || "");
+    const nextPassword = String(body.nextPassword || "");
+    if (!verifyHash(currentPassword, auth.user.passwordHash)) return sendJson(request, response, 400, { error: "Current password is incorrect." });
+    if (nextPassword.length < 12) return sendJson(request, response, 400, { error: "New password must be at least 12 characters." });
+    auth.user.passwordHash = hashSecret(nextPassword);
+    auth.user.requirePasswordReset = false;
+    auth.user.updatedAt = new Date().toISOString();
+    writeAudit(db, auth, "profile.password_changed", "user", auth.user.id, {}, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { ok: true });
+  },
+
   "GET /api/auth/session": async (request, response, db) => {
     const auth = getSessionFromRequest(request, db, { allowUnverifiedMfa: true });
     sendJson(request, response, 200, { valid: Boolean(auth), user: auth ? safeUser(auth.user) : null });
@@ -954,7 +1086,23 @@ const routes = {
 
   "POST /api/public/contact": async (request, response, db) => {
     const body = await readBody(request);
-    db.contacts.unshift({ id: id("contact"), ...body, status: "New", submittedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    db.contacts.unshift({
+      id: id("contact"),
+      name: String(body.name || "").trim(),
+      email: normalizeEmail(body.email),
+      phone: String(body.phone || "").trim(),
+      reason: String(body.reason || body.category || "General Contact").trim(),
+      message: String(body.message || "").trim(),
+      status: "New",
+      priority: "Normal",
+      assignedTo: "",
+      followUpDate: "",
+      notes: "",
+      activity: [{ note: "Created from public website contact form.", actor: "Public website", createdAt: now }],
+      submittedAt: now,
+      updatedAt: now,
+    });
     await writeDb(db);
     sendJson(request, response, 201, { ok: true });
   },
@@ -968,9 +1116,39 @@ const routes = {
 
   "POST /api/public/testimonial": async (request, response, db) => {
     const body = await readBody(request);
-    db.testimonials.unshift({ id: id("testimonial"), ...body, status: "Pending Review", submittedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    db.testimonials.unshift({
+      id: id("testimonial"),
+      name: String(body.name || "").trim(),
+      email: normalizeEmail(body.email),
+      city: String(body.city || "").trim(),
+      ministry: String(body.ministry || "All Walls Down").trim(),
+      quote: String(body.quote || body.story || body.message || "").trim(),
+      story: String(body.story || body.quote || body.message || "").trim(),
+      status: "Pending Review",
+      displayOnSite: false,
+      featured: false,
+      notes: "",
+      submittedAt: now,
+      updatedAt: now,
+    });
     await writeDb(db);
     sendJson(request, response, 201, { ok: true });
+  },
+
+  "GET /api/public/testimonials": async (request, response, db) => {
+    const testimonials = db.testimonials
+      .filter((item) => item.status === "Approved" && item.displayOnSite)
+      .map((item) => ({
+        id: item.id,
+        name: item.name || "AWD Community Member",
+        city: item.city || "",
+        ministry: item.ministry || "All Walls Down",
+        quote: item.quote || item.story || item.message || "",
+        featured: Boolean(item.featured),
+        submittedAt: item.submittedAt || "",
+      }));
+    sendJson(request, response, 200, { testimonials });
   },
 };
 
@@ -1118,11 +1296,183 @@ const handleUserRoute = async (request, response, db, url) => {
   return true;
 };
 
+const inboxModules = {
+  contacts: {
+    collection: "contacts",
+    entityType: "contact",
+    readPermission: "contacts.read",
+    updatePermission: "contacts.update",
+    statuses: ["New", "In Progress", "Follow-Up Needed", "Resolved", "Archived"],
+  },
+  "prayer-requests": {
+    collection: "prayerRequests",
+    entityType: "prayerRequest",
+    readPermission: "prayer.read",
+    updatePermission: "prayer.update",
+    statuses: ["Pending", "In Prayer", "Follow-Up Needed", "Prayed", "Archived"],
+  },
+  testimonials: {
+    collection: "testimonials",
+    entityType: "testimonial",
+    readPermission: "testimonials.read",
+    updatePermission: "testimonials.approve",
+    statuses: ["Pending Review", "Approved", "Needs Edits", "Rejected", "Published", "Archived"],
+  },
+};
+
+const defaultContactCategories = ["General Contact", "Volunteer", "Partnership", "Prayer Follow-Up", "Speaking Request", "Donation Question", "Ministry Support"];
+
+const sanitizeInboxUpdate = (body, config) => {
+  const next = {};
+  const textFields = ["assignedTo", "notes", "priority", "followUpDate", "category", "placement", "internalNotes", "phone", "reason", "message"];
+  for (const field of textFields) {
+    if (Object.hasOwn(body, field)) next[field] = String(body[field] || "").trim();
+  }
+  if (Array.isArray(body.activity)) {
+    next.activity = body.activity.slice(0, 50).map((item) => ({
+      note: String(item.note || "").trim(),
+      actor: String(item.actor || "").trim(),
+      createdAt: String(item.createdAt || new Date().toISOString()),
+    })).filter((item) => item.note);
+  }
+  if (Object.hasOwn(body, "status")) {
+    const status = String(body.status || "").trim();
+    if (config.statuses.includes(status)) next.status = status;
+  }
+  if (Object.hasOwn(body, "confidential")) next.confidential = Boolean(body.confidential);
+  if (Object.hasOwn(body, "displayOnSite")) next.displayOnSite = Boolean(body.displayOnSite);
+  if (Object.hasOwn(body, "featured")) next.featured = Boolean(body.featured);
+  return next;
+};
+
+const safeInboxItem = (item, config, auth) => {
+  if (config.collection !== "prayerRequests") return item;
+  const confidential = Boolean(item.confidential || item.isConfidential || item.privacy === "Private");
+  if (!confidential || hasPermission(auth.user, "prayer.confidential.read")) return item;
+  return {
+    ...item,
+    request: "Confidential prayer request.",
+    message: "Confidential prayer request.",
+    notes: "",
+    confidential: true,
+  };
+};
+
+const handleInboxRoute = async (request, response, db, url) => {
+  const match = url.pathname.match(/^\/api\/(contacts|prayer-requests|testimonials)(?:\/([^/]+))?$/);
+  if (!match) return false;
+  const [, moduleName, itemId] = match;
+  const config = inboxModules[moduleName];
+  const auth = requireAuth(request, response, db, ["PATCH", "POST", "DELETE"].includes(request.method) ? config.updatePermission : config.readPermission);
+  if (!auth) return true;
+  const collection = db[config.collection];
+
+  if (moduleName === "contacts" && itemId === "categories") {
+    const current = parseJson(db.settings.contactCategories, defaultContactCategories);
+    if (request.method === "GET") {
+      sendJson(request, response, 200, { categories: current });
+      return true;
+    }
+    if (request.method === "PATCH") {
+      const body = await readBody(request);
+      const categories = [...new Set((Array.isArray(body.categories) ? body.categories : current).map((item) => String(item || "").trim()).filter(Boolean))];
+      db.settings.contactCategories = JSON.stringify(categories.length ? categories : defaultContactCategories);
+      writeAudit(db, auth, "contact.categories.updated", "settings", "contactCategories", { count: categories.length }, request);
+      await writeDb(db);
+      sendJson(request, response, 200, { categories: categories.length ? categories : defaultContactCategories });
+      return true;
+    }
+  }
+
+  if (request.method === "GET" && !itemId) {
+    sendJson(request, response, 200, {
+      items: collection.map((item) => safeInboxItem(item, config, auth)),
+      statuses: config.statuses,
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && !itemId && moduleName === "contacts") {
+    const body = await readBody(request);
+    const now = new Date().toISOString();
+    const item = {
+      id: id("contact"),
+      name: String(body.name || "").trim(),
+      email: normalizeEmail(body.email),
+      phone: String(body.phone || "").trim(),
+      reason: String(body.reason || body.category || "General Contact").trim(),
+      message: String(body.message || "").trim(),
+      status: String(body.status || "New").trim(),
+      priority: String(body.priority || "Normal").trim(),
+      assignedTo: String(body.assignedTo || "").trim(),
+      followUpDate: String(body.followUpDate || "").trim(),
+      notes: String(body.notes || "").trim(),
+      activity: [],
+      submittedAt: now,
+      updatedAt: now,
+    };
+    if (!item.name || !isValidEmail(item.email)) return sendJson(request, response, 400, { error: "Name and valid email are required." });
+    collection.unshift(item);
+    writeAudit(db, auth, "contact.created", "contact", item.id, { email: item.email }, request);
+    await writeDb(db);
+    sendJson(request, response, 201, { item });
+    return true;
+  }
+
+  if (request.method === "PATCH" && !itemId && moduleName === "contacts") {
+    const body = await readBody(request);
+    const ids = Array.isArray(body.ids) ? body.ids : [];
+    const updates = sanitizeInboxUpdate(body, config);
+    collection.forEach((item) => {
+      if (ids.includes(item.id)) Object.assign(item, updates, { updatedAt: new Date().toISOString() });
+    });
+    writeAudit(db, auth, "contact.bulk_updated", "contact", "bulk", { ids, fields: Object.keys(updates) }, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { items: collection.map((item) => safeInboxItem(item, config, auth)), statuses: config.statuses });
+    return true;
+  }
+
+  const item = collection.find((entry) => entry.id === itemId);
+  if (!item) {
+    sendJson(request, response, 404, { error: "Inbox record not found." });
+    return true;
+  }
+
+  if (request.method === "GET") {
+    sendJson(request, response, 200, { item: safeInboxItem(item, config, auth), statuses: config.statuses });
+    return true;
+  }
+
+  if (request.method === "DELETE" && moduleName === "contacts") {
+    const index = collection.findIndex((entry) => entry.id === itemId);
+    collection.splice(index, 1);
+    writeAudit(db, auth, "contact.deleted", "contact", itemId, { email: item.email }, request);
+    await writeDb(db);
+    const database = await openSqlDb();
+    database.prepare("DELETE FROM contacts WHERE id = ?").run(itemId);
+    sendJson(request, response, 200, { deleted: true, message: "Contact removed." });
+    return true;
+  }
+
+  if (request.method === "PATCH") {
+    const body = await readBody(request);
+    Object.assign(item, sanitizeInboxUpdate(body, config), { updatedAt: new Date().toISOString() });
+    writeAudit(db, auth, `${config.entityType}.updated`, config.entityType, item.id, { fields: Object.keys(body) }, request);
+    await writeDb(db);
+    sendJson(request, response, 200, { item: safeInboxItem(item, config, auth), statuses: config.statuses });
+    return true;
+  }
+
+  sendJson(request, response, 405, { error: "Method not allowed." });
+  return true;
+};
+
 const server = http.createServer(async (request, response) => {
   const db = await loadDb();
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (request.method === "OPTIONS") return sendJson(request, response, 204, {});
   if (await handleUserRoute(request, response, db, url)) return;
+  if (await handleInboxRoute(request, response, db, url)) return;
   const handler = routes[`${request.method} ${url.pathname}`];
   if (!handler) return sendJson(request, response, 404, { error: "Not found" });
   try {

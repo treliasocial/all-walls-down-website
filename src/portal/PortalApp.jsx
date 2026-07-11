@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -25,8 +25,10 @@ import {
   MessageSquareQuote,
   MoreVertical,
   Phone,
+  Plus,
   RotateCcw,
   Save,
+  Send,
   Settings,
   Shield,
   ShieldCheck,
@@ -44,15 +46,51 @@ const idleLogoutMs = 60 * 60 * 1000;
 const activityEvents = ["click", "keydown", "pointerdown", "scroll", "touchstart"];
 const defaultRoles = ["Administrator", "User Admin", "Content Manager", "Prayer Team", "Communications", "Donation Manager", "Read Only", "Auditor"];
 const ministryOptions = [
-  "All Walls Down Ministry",
-  "Prayer Ministry",
-  "Communications",
-  "Donation Stewardship",
-  "Community Outreach",
-  "Leadership Team",
-  "Testimonial Ministry",
-  "Content Ministry",
+  "All Walls Down",
+  "Brothers Keepers",
+  "Daughters of the King",
 ];
+const inboxModuleConfig = {
+  contacts: {
+    title: "Contact Submissions",
+    route: "/api/contacts",
+    icon: Mail,
+    summary: "Manage contact forms, assignments, statuses, notes, priority, and follow-up dates.",
+    searchPlaceholder: "Search contacts by name, email, subject, or message...",
+    fields: {
+      name: ["name", "fullName"],
+      email: ["email"],
+      subject: ["subject", "category", "interest"],
+      body: ["message", "body", "details"],
+    },
+  },
+  prayer: {
+    title: "Prayer Requests",
+    route: "/api/prayer-requests",
+    icon: Shield,
+    summary: "Manage prayer requests, confidentiality, assignments, follow-up, and team notes.",
+    searchPlaceholder: "Search prayer requests by requester, category, or request...",
+    fields: {
+      name: ["name", "requester", "requesterName"],
+      email: ["email"],
+      subject: ["category", "title", "prayerType"],
+      body: ["request", "message", "details"],
+    },
+  },
+  testimonials: {
+    title: "Testimonials",
+    route: "/api/testimonials",
+    icon: MessageSquareQuote,
+    summary: "Review, approve, publish, reject, and place submitted community stories.",
+    searchPlaceholder: "Search testimonials by name, quote, ministry, or city...",
+    fields: {
+      name: ["name"],
+      email: ["email"],
+      subject: ["ministry", "category", "city"],
+      body: ["quote", "story", "message"],
+    },
+  },
+};
 const rolePermissionLabels = [
   "Full system access",
   "Manage staff and roles",
@@ -74,7 +112,7 @@ const blankStaffForm = {
   name: "",
   email: "",
   title: "",
-  ministry: "",
+  ministry: "All Walls Down",
   phone: "",
   bio: "",
   image: "",
@@ -108,6 +146,55 @@ function permissionsForRoles(roles = []) {
   return rolePermissionLabels.map((label) => ({ label, checked: included.has(label) }));
 }
 
+function roleList(roles = []) {
+  const assigned = [...new Set((Array.isArray(roles) ? roles : []).filter(Boolean))];
+  return assigned.length > 1 ? assigned.filter((role) => role !== "Read Only") : assigned;
+}
+
+function primaryRole(roles = []) {
+  const assigned = roleList(roles);
+  return defaultRoles.find((role) => assigned.includes(role)) || assigned[0] || "Read Only";
+}
+
+function toggleRoleAssignment(currentRoles = [], role) {
+  const assigned = new Set(roleList(currentRoles));
+  if (assigned.has(role)) assigned.delete(role);
+  else assigned.add(role);
+  if (role === "Read Only" && assigned.has("Read Only")) {
+    return ["Read Only"];
+  }
+  if (role !== "Read Only" && assigned.has(role)) {
+    assigned.delete("Read Only");
+  }
+  const next = defaultRoles.filter((item) => assigned.has(item));
+  return next.length ? next : ["Read Only"];
+}
+
+function normalizedMinistry(value) {
+  return ministryOptions.includes(value) ? value : "All Walls Down";
+}
+
+function firstValue(item, keys, fallback = "") {
+  for (const key of keys) {
+    if (item?.[key]) return item[key];
+  }
+  return fallback;
+}
+
+function testimonialText(item) {
+  return firstValue(item, ["quote", "story", "message", "body", "details"], "No testimonial text provided.");
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map((value) => `"${String(value || "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function PortalShell({ user, session, onLogout, mfaEnrollmentRequired = false, children }) {
   const location = useLocation();
   const isProfile = location.pathname === "/portal/profile";
@@ -116,6 +203,7 @@ function PortalShell({ user, session, onLogout, mfaEnrollmentRequired = false, c
     { to: "/portal/staff", label: "Staff", icon: Users, gated: true },
     { to: "/portal/security", label: "MFA & Security", icon: ShieldCheck },
     { to: "/portal/profile", label: "Profile", icon: User, gated: true },
+    { to: "/portal/contacts", label: "Contacts", icon: Mail, gated: true },
     { to: "/portal/content", label: "Content", icon: FileText, gated: true },
     { to: "/portal/donations", label: "Donations", icon: Heart, gated: true },
     { to: "/portal/prayer-requests", label: "Prayer Requests", icon: Shield, gated: true },
@@ -264,11 +352,57 @@ function SecurityScreen({ user, refreshUser }) {
   const [enrollment, setEnrollment] = useState(null);
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState([]);
+  const [securityModal, setSecurityModal] = useState("");
+  const [passwords, setPasswords] = useState({ currentPassword: "", nextPassword: "" });
+  const [auditData, setAuditData] = useState(null);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const startEnrollment = async () => {
     setError("");
-    setEnrollment(await apiRequest("/api/mfa/enroll/start", { method: "POST" }));
+    setMessage("");
+    const result = await apiRequest("/api/mfa/enroll/start", { method: "POST" });
+    setEnrollment(result);
+    setSecurityModal("mfa");
+  };
+
+  const regenerateRecoveryCodes = async () => {
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiRequest("/api/mfa/recovery-codes/regenerate", { method: "POST" });
+      setRecoveryCodes(result.recoveryCodes || []);
+      setMessage("Recovery codes regenerated. Save them now.");
+      setSecurityModal("recovery");
+    } catch (recoveryError) {
+      setError(recoveryError.message);
+    }
+  };
+
+  const changeSecurityPassword = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest("/api/auth/change-password", { method: "POST", body: passwords });
+      setPasswords({ currentPassword: "", nextPassword: "" });
+      setSecurityModal("");
+      setMessage("Password changed.");
+      await refreshUser();
+    } catch (passwordError) {
+      setError(passwordError.message);
+    }
+  };
+
+  const openAuditLog = async () => {
+    setError("");
+    try {
+      const result = await apiRequest("/api/audit");
+      setAuditData(result);
+      setSecurityModal("audit");
+    } catch (auditError) {
+      setError(auditError.message);
+    }
   };
 
   const verifyEnrollment = async (event) => {
@@ -297,6 +431,8 @@ function SecurityScreen({ user, refreshUser }) {
           <p>Manage authentication methods, security settings, and account protection.</p>
         </div>
       </div>
+      {message ? <p className="form-success">{message}</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
       <div className="security-grid">
         <section className="portal-card account-summary-card">
           <h3><User size={19} /> Account Summary</h3>
@@ -316,35 +452,35 @@ function SecurityScreen({ user, refreshUser }) {
           <p>Your password helps protect your account.</p>
           <div className="password-meter"><span /></div>
           <StatusRow label="Password strength" value="Strong" good />
-          <button className="button button--gold" type="button"><Lock size={18} /> Change Password</button>
+          <button className="button button--gold" type="button" onClick={() => setSecurityModal("password")}><Lock size={18} /> Change Password</button>
         </section>
         <section className="portal-card">
           <h3><Lock size={19} /> Multi-Factor Authentication</h3>
-          <div className="security-method"><Smartphone size={18} /><span>Authenticator App<small>{user.mfaEnabled ? "Enabled" : "Required"}</small></span><ArrowRight size={16} /></div>
-          <div className="security-method"><Mail size={18} /><span>Email Verification<small>{user.email}</small></span><ArrowRight size={16} /></div>
+          <button className="security-method" type="button" onClick={user.mfaEnabled ? () => setSecurityModal("authenticator") : startEnrollment}><Smartphone size={18} /><span>Authenticator App<small>{user.mfaEnabled ? "Enabled" : "Required"}</small></span><ArrowRight size={16} /></button>
+          <button className="security-method" type="button" onClick={() => setSecurityModal("email")}><Mail size={18} /><span>Email Verification<small>{user.email}</small></span><ArrowRight size={16} /></button>
           {!user.mfaEnabled ? <button className="button button--gold" type="button" onClick={startEnrollment}><KeyRound size={18} /> Start authenticator enrollment</button> : null}
         </section>
         <section className="portal-card">
           <h3><KeyRound size={19} /> Backup Codes</h3>
           <div className="backup-code-box">10 backup codes remaining</div>
-          <button className="button button--gold" type="button">Regenerate Codes</button>
+          <button className="button button--gold" type="button" onClick={regenerateRecoveryCodes}><RotateCcw size={18} /> Regenerate Codes</button>
         </section>
         <section className="portal-card">
           <h3><Smartphone size={19} /> Trusted Devices</h3>
           <StatusRow label="MacBook Pro" value="Current Device" good />
           <StatusRow label="iPhone" value="Last used today" good />
-          <a href="/portal/security">Manage Trusted Devices <ArrowRight size={14} /></a>
+          <button className="button button--outline" type="button" onClick={() => setSecurityModal("devices")}><Smartphone size={18} /> Manage Trusted Devices</button>
         </section>
         <section className="portal-card">
           <h3><History size={19} /> Audit Actions</h3>
           <StatusRow label="MFA status" value={user.mfaEnabled ? "Success" : "Required"} good={user.mfaEnabled} />
           <StatusRow label="Password reset flag" value={user.requirePasswordReset ? "Required" : "Clear"} good={!user.requirePasswordReset} />
-          <a href="/portal/settings">View Full Audit Log <ArrowRight size={14} /></a>
+          <button className="button button--outline" type="button" onClick={openAuditLog}><History size={18} /> View Full Audit Log</button>
         </section>
         <section className="portal-card">
           <h3><MonitorIcon /> Active Sessions</h3>
           <StatusRow label="Dallas, TX, USA" value="This Device" good />
-          <button className="button button--outline" type="button">View All Sessions</button>
+          <button className="button button--outline" type="button" onClick={() => setSecurityModal("sessions")}><Eye size={18} /> Manage Sessions</button>
         </section>
         <section className="portal-card">
           <h3><Bell size={19} /> Login Alerts</h3>
@@ -357,33 +493,57 @@ function SecurityScreen({ user, refreshUser }) {
           <StatusRow label="Session Expiration" value="60 minutes idle" good />
         </section>
       </div>
-      {enrollment ? (
-        <section className="portal-card portal-mfa-enroll">
-          <h3>Scan QR Code</h3>
-          <img src={enrollment.qrCodeUrl} alt="Authenticator QR code" />
-          <p>Manual setup key: <code>{enrollment.secret}</code></p>
-          <form className="portal-form" onSubmit={verifyEnrollment}>
-            <label>
-              6-digit code
-              <input value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" required />
-            </label>
-            {error ? <p className="form-error">{error}</p> : null}
-            <button className="button button--gold" type="submit">
-              <CheckCircle2 size={18} /> Verify and enable MFA
-            </button>
-          </form>
-        </section>
-      ) : null}
-      {recoveryCodes.length ? (
-        <section className="portal-card">
-          <h3>Recovery codes</h3>
-          <p>Save these now. They are shown only once.</p>
-          <div className="portal-recovery-grid">
-            {recoveryCodes.map((item) => <code key={item}>{item}</code>)}
-          </div>
-        </section>
+      {securityModal ? (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setSecurityModal("")}>
+          <section className="portal-card security-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <h3>{securityModal === "password" ? "Change Password" : securityModal === "mfa" ? "Authenticator Enrollment" : securityModal === "recovery" ? "Recovery Codes" : securityModal === "devices" ? "Trusted Devices" : securityModal === "audit" ? "Audit Log" : securityModal === "sessions" ? "Active Sessions" : securityModal === "email" ? "Email Verification" : "Authenticator App"}</h3>
+              <button type="button" onClick={() => setSecurityModal("")} aria-label="Close security modal"><XCircle size={18} /></button>
+            </header>
+            {securityModal === "password" ? (
+              <form className="portal-form security-modal-form" onSubmit={changeSecurityPassword}>
+                <label>Current Password<input type="password" value={passwords.currentPassword} onChange={(event) => setPasswords((current) => ({ ...current, currentPassword: event.target.value }))} required /></label>
+                <label>New Password<input type="password" value={passwords.nextPassword} onChange={(event) => setPasswords((current) => ({ ...current, nextPassword: event.target.value }))} required minLength={12} /></label>
+                <button className="button button--gold" type="submit"><Lock size={18} /> Save Password</button>
+              </form>
+            ) : null}
+            {securityModal === "mfa" && enrollment ? (
+              <div className="portal-mfa-enroll">
+                <img src={enrollment.qrCodeUrl} alt="Authenticator QR code" />
+                <p>Manual setup key: <code>{enrollment.secret}</code></p>
+                <form className="portal-form security-modal-form" onSubmit={verifyEnrollment}>
+                  <label>6-digit code<input value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" required /></label>
+                  <button className="button button--gold" type="submit"><CheckCircle2 size={18} /> Verify and enable MFA</button>
+                </form>
+              </div>
+            ) : null}
+            {securityModal === "recovery" ? (
+              <>
+                <p>Save these now. They are shown only once.</p>
+                <div className="portal-recovery-grid">{recoveryCodes.map((item) => <code key={item}>{item}</code>)}</div>
+              </>
+            ) : null}
+            {securityModal === "devices" ? <SecurityList rows={[["MacBook Pro", "Current device"], ["iPhone", "Last used today"]]} /> : null}
+            {securityModal === "sessions" ? <SecurityList rows={[["Dallas, TX, USA", "This device"], ["Session expiration", "60 minutes idle"]]} /> : null}
+            {securityModal === "email" ? <SecurityList rows={[[user.email, "Verified staff account email"], ["Delivery", "Used for login and recovery notices"]]} /> : null}
+            {securityModal === "authenticator" ? <SecurityList rows={[["Authenticator App", user.mfaEnabled ? "Enabled" : "Required"], ["Recovery Codes", "Available from Backup Codes"]]} /> : null}
+            {securityModal === "audit" ? (
+              <ul className="portal-activity-list security-audit-list">
+                {(auditData?.auditLogs || []).slice(0, 12).map((item) => <li key={item.id}><span>{item.action}</span><small>{item.actorEmail || "System"} · {new Date(item.createdAt).toLocaleString()}</small></li>)}
+              </ul>
+            ) : null}
+          </section>
+        </div>
       ) : null}
     </section>
+  );
+}
+
+function SecurityList({ rows }) {
+  return (
+    <div className="security-modal-list">
+      {rows.map(([label, value]) => <StatusRow key={label} label={label} value={value} good />)}
+    </div>
   );
 }
 
@@ -417,9 +577,12 @@ function StaffManagement() {
   const [auditHistory, setAuditHistory] = useState([]);
   const [form, setForm] = useState(blankStaffForm);
   const [createOpen, setCreateOpen] = useState(false);
+  const [staffPhotoOpen, setStaffPhotoOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [staffQuery, setStaffQuery] = useState("");
+  const [staffFilter, setStaffFilter] = useState("All Staff");
 
   const loadUsers = async () => {
     const result = await apiRequest("/api/users");
@@ -449,14 +612,14 @@ function StaffManagement() {
   const toggleFormRole = (role) =>
     setForm((current) => ({
       ...current,
-      roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role],
+      roles: toggleRoleAssignment(current.roles, role),
     }));
 
   const updateSelected = (field, value) => setSelectedUser((current) => ({ ...current, [field]: value }));
   const toggleSelectedRole = (role) =>
     setSelectedUser((current) => ({
       ...current,
-      roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role],
+      roles: toggleRoleAssignment(current.roles, role),
     }));
 
   const createStaff = async (event) => {
@@ -527,6 +690,16 @@ function StaffManagement() {
     }
   };
 
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = [user.name, user.email, user.title, user.roles?.join(" ")].join(" ").toLowerCase().includes(staffQuery.toLowerCase());
+    const matchesFilter =
+      staffFilter === "All Staff" ||
+      (staffFilter === "Active" && user.isActive) ||
+      (staffFilter === "Invited" && !user.mfaEnabled) ||
+      (staffFilter === "Suspended" && !user.isActive);
+    return matchesSearch && matchesFilter;
+  });
+
   if (selectedUser) {
     const selectedPermissions = permissionsForRoles(selectedUser.roles);
     return (
@@ -552,11 +725,11 @@ function StaffManagement() {
           </div>
           <div className="profile-hero__identity">
             <h2>{selectedUser.name}</h2>
-            <span><Crown size={15} /> {selectedUser.roles?.[0] || "Staff"}</span>
+            <span><Crown size={15} /> {primaryRole(selectedUser.roles)}</span>
             <ul>
               <li><Mail size={16} /> {selectedUser.email}</li>
               <li><Phone size={16} /> {selectedUser.phone || "(214) 555-0198"}</li>
-              <li><Landmark size={16} /> {selectedUser.ministry || "All Walls Down Ministry"}</li>
+              <li><Landmark size={16} /> {selectedUser.ministry || "All Walls Down"}</li>
               <li><MapPin size={16} /> Dallas, TX, USA</li>
               <li><Calendar size={16} /> Member since {new Date(selectedUser.createdAt).toLocaleDateString()}</li>
             </ul>
@@ -573,9 +746,9 @@ function StaffManagement() {
               <label>Email Address<input value={selectedUser.email || ""} readOnly /></label>
               <label>Phone Number<input value={selectedUser.phone || ""} onChange={(event) => updateSelected("phone", event.target.value)} /></label>
               <label>Title / Position<input value={selectedUser.title || ""} onChange={(event) => updateSelected("title", event.target.value)} /></label>
-              <label>Organization / Ministry<select value={selectedUser.ministry || "All Walls Down Ministry"} onChange={(event) => updateSelected("ministry", event.target.value)}>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
+              <label>Organization / Ministry<select value={normalizedMinistry(selectedUser.ministry)} onChange={(event) => updateSelected("ministry", event.target.value)}>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
               <label>Location<input value="Dallas, TX, USA" readOnly /></label>
-              <label>Profile Image Path<input value={selectedUser.image || ""} onChange={(event) => updateSelected("image", event.target.value)} /></label>
+              <div className="profile-photo-field"><span>Profile Photo</span><button className="button button--outline" type="button" onClick={() => setStaffPhotoOpen(true)}><Camera size={18} /> Update Photo</button></div>
               <label>Short Bio<textarea value={selectedUser.bio || ""} onChange={(event) => updateSelected("bio", event.target.value)} /></label>
               <label>Internal Notes<textarea value={selectedUser.notes || ""} onChange={(event) => updateSelected("notes", event.target.value)} /></label>
             </div>
@@ -644,6 +817,22 @@ function StaffManagement() {
             ) : <p>No staff audit history yet.</p>}
           </section>
         </div>
+        {staffPhotoOpen ? (
+          <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setStaffPhotoOpen(false)}>
+            <section className="portal-card staff-photo-modal" onMouseDown={(event) => event.stopPropagation()}>
+              <header>
+                <h3><Camera size={19} /> Staff Profile Photo</h3>
+                <button type="button" onClick={() => setStaffPhotoOpen(false)} aria-label="Close staff profile photo"><XCircle size={18} /></button>
+              </header>
+              <label>Image URL<input value={selectedUser.image || ""} onChange={(event) => updateSelected("image", event.target.value)} placeholder="/assets/profile-photo.webp" /></label>
+              <div className="staff-photo-preview">{selectedUser.image ? <img src={selectedUser.image} alt="" /> : <span>{initialsFor(selectedUser.name)}</span>}</div>
+              <footer>
+                <button className="button button--outline" type="button" onClick={() => setStaffPhotoOpen(false)}>Close</button>
+                <button className="button button--gold" type="button" onClick={() => setStaffPhotoOpen(false)}><CheckCircle2 size={18} /> OK</button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -674,45 +863,50 @@ function StaffManagement() {
       {newPassword ? <p className="form-success">Temporary password: <code>{newPassword}</code></p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {createOpen ? (
-        <form className="portal-card portal-form staff-create-form" onSubmit={createStaff}>
-          <h3>Create staff account</h3>
-          <label>Name<input value={form.name} onChange={(event) => updateForm("name", event.target.value)} required /></label>
-          <label>Email<input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} required /></label>
-          <label>Title<input value={form.title} onChange={(event) => updateForm("title", event.target.value)} /></label>
-          <label>Organization / Ministry<select value={form.ministry || "All Walls Down Ministry"} onChange={(event) => updateForm("ministry", event.target.value)}>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
-          <label>Temporary password<input value={form.temporaryPassword} onChange={(event) => updateForm("temporaryPassword", event.target.value)} placeholder="Leave blank to generate" /></label>
-          <label className="portal-check">
-            <input type="checkbox" checked={form.showOnLeadership} onChange={(event) => updateForm("showOnLeadership", event.target.checked)} />
-            Show on Leadership page
-          </label>
-          <div className="role-picker">
-            {roles.map((role) => (
-              <label key={role}>
-                <input type="checkbox" checked={form.roles.includes(role)} onChange={() => toggleFormRole(role)} />
-                {role}
-              </label>
-            ))}
-          </div>
-          <button className="button button--gold" type="submit">Create staff</button>
-        </form>
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setCreateOpen(false)}>
+          <form className="portal-card portal-form staff-create-modal" onSubmit={createStaff} onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <h3><UserPlus size={19} /> Create staff account</h3>
+              <button type="button" onClick={() => setCreateOpen(false)} aria-label="Close create staff"><XCircle size={18} /></button>
+            </header>
+            <label>Name<input value={form.name} onChange={(event) => updateForm("name", event.target.value)} required /></label>
+            <label>Email<input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} required /></label>
+            <label>Title<input value={form.title} onChange={(event) => updateForm("title", event.target.value)} /></label>
+            <label>Organization / Ministry<select value={normalizedMinistry(form.ministry)} onChange={(event) => updateForm("ministry", event.target.value)}>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
+            <label>Temporary password<input value={form.temporaryPassword} onChange={(event) => updateForm("temporaryPassword", event.target.value)} placeholder="Leave blank to generate" /></label>
+            <label className="portal-check">
+              <input type="checkbox" checked={form.showOnLeadership} onChange={(event) => updateForm("showOnLeadership", event.target.checked)} />
+              Show on Leadership page
+            </label>
+            <div className="role-picker">
+              {roles.map((role) => (
+                <label key={role}>
+                  <input type="checkbox" checked={form.roles.includes(role)} onChange={() => toggleFormRole(role)} />
+                  {role}
+                </label>
+              ))}
+            </div>
+            <button className="button button--gold" type="submit"><Save size={18} /> Create Staff</button>
+          </form>
+        </div>
       ) : null}
       <div className="staff-management-layout">
         <section className="portal-card staff-table-card">
           <div className="staff-toolbar">
-            <div className="staff-tabs"><button type="button" className="is-active">All Staff</button><button type="button">Active</button><button type="button">Invited</button><button type="button">Suspended</button></div>
-            <label><Filter size={16} /><input placeholder="Search staff by name, email, or role..." /></label>
-            <button type="button"><Filter size={16} /> Filters</button>
+            <div className="staff-tabs">{["All Staff", "Active", "Invited", "Suspended"].map((filter) => <button key={filter} type="button" className={staffFilter === filter ? "is-active" : ""} onClick={() => setStaffFilter(filter)}>{filter}</button>)}</div>
+            <label><Filter size={16} /><input value={staffQuery} onChange={(event) => setStaffQuery(event.target.value)} placeholder="Search staff by name, email, or role..." /></label>
+            <button type="button" onClick={() => { setStaffQuery(""); setStaffFilter("All Staff"); }}><RotateCcw size={16} /> Reset</button>
           </div>
           <div className="staff-table">
             <div className="staff-table__head">
               <span>Staff Member</span><span>Title</span><span>Email</span><span>Roles</span><span>Account Status</span><span>Invite Status</span><span>Actions</span>
             </div>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <button type="button" key={user.id} className="staff-row" onClick={() => setSelectedId(user.id)}>
-                <span className="staff-person"><em>{initialsFor(user.name)}</em><span><strong>{user.name}</strong><small>{user.roles?.[0] || "Staff"}</small></span></span>
+                <span className="staff-person"><em>{initialsFor(user.name)}</em><span><strong>{user.name}</strong><small>{primaryRole(user.roles)}</small></span></span>
                 <span>{user.title || "Staff Member"}</span>
                 <span>{user.email}</span>
-                <span><b>{user.roles?.[0] || "Read Only"}</b></span>
+                <span className="staff-role-cell">{roleList(user.roles).map((role) => <b key={role}>{role}</b>)}</span>
                 <span><i className={user.isActive ? "is-good" : "is-warning"}>{user.isActive ? "Active" : "Suspended"}</i></span>
                 <span><i className={user.mfaEnabled ? "is-good" : "is-warning"}>{user.mfaEnabled ? "Accepted" : "Pending"}</i></span>
                 <span><MoreVertical size={17} /></span>
@@ -721,13 +915,13 @@ function StaffManagement() {
           </div>
         </section>
         <aside className="portal-side-rail">
-          <PortalActionPanel title="Onboarding Workflow" body="Standardize new staff onboarding." primary="Start Onboarding" icon={UserPlus} />
-          <PortalActionPanel title="Role Matrix" body="View and manage role permissions." primary="View Role Matrix" icon={ShieldCheck} />
-          <PortalActionPanel title="Bulk Actions" body="Perform actions on multiple accounts." primary="Bulk Manage Staff" icon={Users} />
+          <PortalActionPanel title="Onboarding Workflow" body="Create a new staff account and assign initial access." primary="Start Onboarding" icon={UserPlus} onAction={() => setCreateOpen(true)} />
+          <PortalActionPanel title="Role Matrix" body="Review available role names and permissions." primary="View Role Matrix" icon={ShieldCheck} onAction={() => setStaffFilter("All Staff")} />
+          <PortalActionPanel title="Bulk Actions" body="Filter suspended or invited accounts for follow-up." primary="Review Invites" icon={Users} onAction={() => setStaffFilter("Invited")} />
           <section className="portal-card portal-action-panel">
             <h3><Upload size={19} /> Import / Export</h3>
             <p>Import new staff or export reports.</p>
-            <div className="split-actions"><button type="button"><Upload size={17} /> Import Staff</button><button type="button"><Download size={17} /> Export Staff</button></div>
+            <div className="split-actions"><button type="button" onClick={() => setCreateOpen(true)}><Upload size={17} /> Add Staff</button><button type="button" onClick={() => downloadCsv("staff-export.csv", [["Name", "Email", "Title", "Roles", "Active"], ...users.map((user) => [user.name, user.email, user.title, user.roles?.join("; "), user.isActive ? "Active" : "Suspended"])])}><Download size={17} /> Export Staff</button></div>
           </section>
         </aside>
       </div>
@@ -735,57 +929,133 @@ function StaffManagement() {
   );
 }
 
-function PortalActionPanel({ title, body, primary, icon: Icon }) {
+function PortalActionPanel({ title, body, primary, icon: Icon, onAction }) {
   return (
     <section className="portal-card portal-action-panel">
       <h3><Icon size={19} /> {title}</h3>
       <p>{body}</p>
-      <button type="button">{primary}</button>
+      <button type="button" onClick={onAction}>{primary}</button>
     </section>
   );
 }
 
-function ProfileScreen({ user, onLogoutAll }) {
+function ProfileScreen({ user, onLogoutAll, refreshUser }) {
+  const profilePhotoInputRef = useRef(null);
+  const [profile, setProfile] = useState({
+    name: user.name || "",
+    phone: user.phone || "",
+    title: user.title || user.roles[0] || "",
+    ministry: normalizedMinistry(user.ministry),
+    bio: user.bio || "",
+    image: user.image || "",
+    showOnLeadership: Boolean(user.showOnLeadership),
+  });
+  const [avatarEditor, setAvatarEditor] = useState(null);
+  const [passwords, setPasswords] = useState({ currentPassword: "", nextPassword: "" });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const profilePermissions = permissionsForRoles(user.roles);
+  const updateProfile = (field, value) => setProfile((current) => ({ ...current, [field]: value }));
+  const updatePassword = (field, value) => setPasswords((current) => ({ ...current, [field]: value }));
+  const openAvatarFile = () => profilePhotoInputRef.current?.click();
+  const loadAvatarFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAvatarEditor({ src: String(reader.result || ""), zoom: 1, x: 50, y: 50 });
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+  const applyAvatar = async () => {
+    if (!avatarEditor?.src) return;
+    const image = new Image();
+    image.onload = () => {
+      const size = 420;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.fillStyle = "#0b0b0d";
+      context.fillRect(0, 0, size, size);
+      const scale = Math.max(size / image.width, size / image.height) * avatarEditor.zoom;
+      const width = image.width * scale;
+      const height = image.height * scale;
+      const left = ((size - width) * avatarEditor.x) / 100;
+      const top = ((size - height) * avatarEditor.y) / 100;
+      context.drawImage(image, left, top, width, height);
+      updateProfile("image", canvas.toDataURL("image/jpeg", 0.88));
+      setAvatarEditor(null);
+    };
+    image.src = avatarEditor.src;
+  };
+  const saveProfile = async () => {
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest("/api/auth/me", { method: "PATCH", body: profile });
+      await refreshUser();
+      setMessage("Profile saved.");
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  };
+  const changePassword = async () => {
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest("/api/auth/change-password", { method: "POST", body: passwords });
+      setPasswords({ currentPassword: "", nextPassword: "" });
+      setMessage("Password changed.");
+    } catch (passwordError) {
+      setError(passwordError.message);
+    }
+  };
   return (
     <section className="portal-screen profile-page">
       <div className="profile-hero portal-card">
         <div className="profile-hero__avatar-wrap">
-          {user.image ? <img className="profile-hero__avatar" src={user.image} alt="" /> : <div className="profile-hero__avatar">{initialsFor(user.name)}</div>}
-          <button type="button" aria-label="Update profile photo"><Camera size={18} /></button>
+          {profile.image ? <img className="profile-hero__avatar" src={profile.image} alt="" /> : <div className="profile-hero__avatar">{initialsFor(profile.name)}</div>}
+          <button type="button" aria-label="Update profile photo" onClick={openAvatarFile}><Camera size={18} /></button>
+          <input ref={profilePhotoInputRef} className="sr-only" type="file" accept="image/*" onChange={loadAvatarFile} />
         </div>
         <div className="profile-hero__identity">
-          <h2>{user.name}</h2>
-          <span><Crown size={15} /> {user.roles[0]}</span>
+          <h2>{profile.name}</h2>
+          <span><Crown size={15} /> {primaryRole(user.roles)}</span>
           <ul>
             <li><Mail size={16} /> {user.email}</li>
-            <li><Phone size={16} /> {user.phone || "(214) 555-0198"}</li>
-            <li><Landmark size={16} /> {user.ministry || "All Walls Down Ministry"}</li>
+            <li><Phone size={16} /> {profile.phone || "(214) 555-0198"}</li>
+            <li><Landmark size={16} /> {profile.ministry || "All Walls Down"}</li>
             <li><MapPin size={16} /> Dallas, TX, USA</li>
             <li><Calendar size={16} /> Member since {new Date(user.createdAt).toLocaleDateString()}</li>
           </ul>
         </div>
         <div className="profile-hero__badges"><b>Active</b><b>Session Verified</b></div>
       </div>
+      {message ? <p className="form-success">{message}</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
       <div className="profile-settings-grid">
         <section className="portal-card portal-form profile-info-card">
           <h3><User size={19} /> Profile Information</h3>
           <p>Update your personal and ministry information.</p>
           <div className="profile-form-grid">
-            <label>Display Name<input value={user.name} readOnly /></label>
-            <label>Full Name<input value={user.name} readOnly /></label>
+            <label>Display Name<input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} /></label>
+            <label>Full Name<input value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} /></label>
             <label>Email Address<input value={user.email} readOnly /></label>
-            <label>Phone Number<input value={user.phone || ""} readOnly placeholder="Not set" /></label>
-            <label>Title / Position<input value={user.title || user.roles[0]} readOnly /></label>
-            <label>Organization / Ministry<select value={user.ministry || "All Walls Down Ministry"} disabled>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
+            <label>Phone Number<input value={profile.phone} onChange={(event) => updateProfile("phone", event.target.value)} placeholder="Not set" /></label>
+            <label>Title / Position<input value={profile.title} onChange={(event) => updateProfile("title", event.target.value)} /></label>
+            <label>Organization / Ministry<select value={profile.ministry} onChange={(event) => updateProfile("ministry", event.target.value)}>{ministryOptions.map((ministry) => <option key={ministry} value={ministry}>{ministry}</option>)}</select></label>
             <label>Location<input value="Dallas, TX, USA" readOnly /></label>
             <label>Time Zone<input value="(UTC-06:00) Central Time" readOnly /></label>
-            <label>Short Bio<textarea value={user.bio || "Passionate about serving All Walls Down and supporting ministry operations."} readOnly /></label>
-            <label>Faith Testimonial<textarea value="God has called me to serve, lead, and equip others to walk in their purpose." readOnly /></label>
+            <label>Short Bio<textarea value={profile.bio} onChange={(event) => updateProfile("bio", event.target.value)} /></label>
+            <div className="profile-photo-field">
+              <span>Profile Photo</span>
+              <button className="button button--outline" type="button" onClick={openAvatarFile}><Camera size={18} /> Choose Image</button>
+            </div>
           </div>
           <div className="profile-lower-grid">
             <div className="profile-toggle-stack">
-              <div className="profile-toggle-row"><span><MapPin size={20} /> <em>Leadership Page<small>Show on leadership page</small></em></span><input type="checkbox" checked={user.showOnLeadership} readOnly /></div>
+              <div className="profile-toggle-row"><span><MapPin size={20} /> <em>Leadership Page<small>Show on leadership page</small></em></span><input type="checkbox" checked={profile.showOnLeadership} onChange={(event) => updateProfile("showOnLeadership", event.target.checked)} /></div>
               <div className="profile-toggle-row"><span><User size={20} /> <em>Public Profile<small>Visible in public staff directory</small></em></span><input type="checkbox" checked readOnly /></div>
             </div>
             <div className="profile-notifications">
@@ -799,7 +1069,7 @@ function ProfileScreen({ user, onLogoutAll }) {
               </div>
             </div>
           </div>
-          <button className="button button--gold profile-save-button" type="button"><Save size={18} /> Save Changes</button>
+          <button className="button button--gold profile-save-button" type="button" onClick={saveProfile}><Save size={18} /> Save Changes</button>
         </section>
         <aside className="profile-side-stack">
           <section className="portal-card">
@@ -821,12 +1091,465 @@ function ProfileScreen({ user, onLogoutAll }) {
             <h3><Activity size={19} /> Account Actions</h3>
             <p>Perform administrative actions for this account.</p>
             <div className="account-action-grid">
-              <button type="button"><UserPlus size={18} /> Stage Invite</button>
-              <button type="button"><Lock size={18} /> Force Password Reset</button>
-              <button type="button"><Shield size={18} /> Reset MFA</button>
+              <input type="password" placeholder="Current password" value={passwords.currentPassword} onChange={(event) => updatePassword("currentPassword", event.target.value)} />
+              <input type="password" placeholder="New password" value={passwords.nextPassword} onChange={(event) => updatePassword("nextPassword", event.target.value)} />
+              <button type="button" onClick={changePassword}><Lock size={18} /> Change Password</button>
+              <button type="button" onClick={() => window.location.assign("/portal/security")}><Shield size={18} /> Manage MFA</button>
               <button type="button" className="is-danger" onClick={onLogoutAll}><XCircle size={18} /> Log Out Devices</button>
             </div>
           </section>
+        </aside>
+      </div>
+      {avatarEditor ? (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setAvatarEditor(null)}>
+          <section className="portal-card avatar-editor-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <h3><Camera size={19} /> Position Profile Photo</h3>
+              <button type="button" onClick={() => setAvatarEditor(null)} aria-label="Close profile photo editor"><XCircle size={18} /></button>
+            </header>
+            <div className="avatar-frame-preview">
+              <img
+                src={avatarEditor.src}
+                alt=""
+                style={{
+                  transform: `scale(${avatarEditor.zoom})`,
+                  objectPosition: `${avatarEditor.x}% ${avatarEditor.y}%`,
+                }}
+              />
+            </div>
+            <div className="avatar-editor-controls">
+              <label>Zoom<input type="range" min="1" max="2.6" step="0.05" value={avatarEditor.zoom} onChange={(event) => setAvatarEditor((current) => ({ ...current, zoom: Number(event.target.value) }))} /></label>
+              <label>Horizontal Position<input type="range" min="0" max="100" value={avatarEditor.x} onChange={(event) => setAvatarEditor((current) => ({ ...current, x: Number(event.target.value) }))} /></label>
+              <label>Vertical Position<input type="range" min="0" max="100" value={avatarEditor.y} onChange={(event) => setAvatarEditor((current) => ({ ...current, y: Number(event.target.value) }))} /></label>
+            </div>
+            <footer>
+              <button className="button button--outline" type="button" onClick={() => setAvatarEditor(null)}>Cancel</button>
+              <button className="button button--gold" type="button" onClick={applyAvatar}><CheckCircle2 size={18} /> OK</button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ContactCrm() {
+  const statuses = inboxModuleConfig.contacts.fields ? ["New", "In Progress", "Follow-Up Needed", "Resolved", "Archived"] : [];
+  const priorities = ["Low", "Normal", "High", "Urgent"];
+  const [contacts, setContacts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [draft, setDraft] = useState(null);
+  const [newCategory, setNewCategory] = useState("");
+  const [newContactOpen, setNewContactOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [newContact, setNewContact] = useState({ name: "", email: "", phone: "", reason: "General Contact", message: "", priority: "Normal" });
+  const [activityNote, setActivityNote] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const loadCrm = useCallback(async () => {
+    const [contactsResult, categoryResult] = await Promise.all([
+      apiRequest("/api/contacts"),
+      apiRequest("/api/contacts/categories"),
+    ]);
+    setContacts(contactsResult.items || []);
+    setCategories(categoryResult.categories || []);
+    setSelectedId((current) => current || contactsResult.items?.[0]?.id || "");
+  }, []);
+
+  useEffect(() => {
+    loadCrm().catch((loadError) => setError(loadError.message));
+  }, [loadCrm]);
+
+  const selected = contacts.find((contact) => contact.id === selectedId);
+
+  useEffect(() => {
+    if (!selected) {
+      setDraft(null);
+      return;
+    }
+    setDraft({
+      status: selected.status || "New",
+      priority: selected.priority || "Normal",
+      assignedTo: selected.assignedTo || "",
+      followUpDate: selected.followUpDate || "",
+      reason: selected.reason || selected.category || "General Contact",
+      phone: selected.phone || "",
+      message: selected.message || "",
+      notes: selected.notes || "",
+      activity: selected.activity || [],
+    });
+  }, [selected]);
+
+  const filteredContacts = contacts.filter((contact) => {
+    const category = contact.reason || contact.category || "General Contact";
+    const text = [contact.name, contact.email, contact.phone, category, contact.message, contact.status, contact.assignedTo].join(" ").toLowerCase();
+    return text.includes(query.toLowerCase()) && (statusFilter === "All" || contact.status === statusFilter) && (categoryFilter === "All" || category === categoryFilter);
+  });
+
+  const crmStats = [
+    ["Total Contacts", contacts.length, "All CRM records", Users],
+    ["New", contacts.filter((contact) => contact.status === "New").length, "Needs review", Mail],
+    ["Follow-Up", contacts.filter((contact) => contact.status === "Follow-Up Needed").length, "Scheduled next steps", Bell],
+    ["Urgent", contacts.filter((contact) => contact.priority === "Urgent").length, "High-touch items", AlertTriangle],
+    ["Resolved", contacts.filter((contact) => contact.status === "Resolved").length, "Completed records", CheckCircle2],
+  ];
+
+  const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  const updateNewContact = (field, value) => setNewContact((current) => ({ ...current, [field]: value }));
+
+  const saveSelectedContact = async () => {
+    if (!selected || !draft) return;
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiRequest(`/api/contacts/${selected.id}`, { method: "PATCH", body: { ...draft, category: draft.reason } });
+      setContacts((current) => current.map((contact) => (contact.id === selected.id ? result.item : contact)));
+      setMessage("Contact CRM record saved.");
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  };
+
+  const createContact = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiRequest("/api/contacts", { method: "POST", body: newContact });
+      setContacts((current) => [result.item, ...current]);
+      setSelectedId(result.item.id);
+      setNewContact({ name: "", email: "", phone: "", reason: categories[0] || "General Contact", message: "", priority: "Normal" });
+      setNewContactOpen(false);
+      setMessage("Contact created.");
+    } catch (createError) {
+      setError(createError.message);
+    }
+  };
+
+  const removeSelectedContact = async () => {
+    if (!selected || !window.confirm(`Remove ${selected.name || selected.email} from the CRM?`)) return;
+    const result = await apiRequest(`/api/contacts/${selected.id}`, { method: "DELETE" });
+    setContacts((current) => current.filter((contact) => contact.id !== selected.id));
+    setSelectedId("");
+    setViewerOpen(false);
+    setMessage(result.message || "Contact removed.");
+  };
+
+  const addCategory = async () => {
+    const category = newCategory.trim();
+    if (!category) return;
+    const nextCategories = [...new Set([...categories, category])];
+    const result = await apiRequest("/api/contacts/categories", { method: "PATCH", body: { categories: nextCategories } });
+    setCategories(result.categories || nextCategories);
+    setNewCategory("");
+  };
+
+  const bulkUpdate = async (status) => {
+    if (!selectedIds.length) return;
+    const result = await apiRequest("/api/contacts", { method: "PATCH", body: { ids: selectedIds, status } });
+    setContacts(result.items || []);
+    setSelectedIds([]);
+    setMessage(`Updated ${selectedIds.length} contacts.`);
+  };
+
+  const addActivity = async () => {
+    if (!selected || !draft || !activityNote.trim()) return;
+    const activity = [{ note: activityNote.trim(), actor: "Portal user", createdAt: new Date().toISOString() }, ...(draft.activity || [])];
+    const result = await apiRequest(`/api/contacts/${selected.id}`, { method: "PATCH", body: { ...draft, activity } });
+    setContacts((current) => current.map((contact) => (contact.id === selected.id ? result.item : contact)));
+    setActivityNote("");
+  };
+
+  const exportContacts = () => downloadCsv("contacts-crm-export.csv", [
+    ["Name", "Email", "Phone", "Reason", "Status", "Priority", "Assigned To", "Follow-Up", "Submitted"],
+    ...filteredContacts.map((contact) => [contact.name, contact.email, contact.phone, contact.reason || contact.category, contact.status, contact.priority, contact.assignedTo, contact.followUpDate, contact.submittedAt]),
+  ]);
+
+  return (
+    <section className="portal-screen contact-crm-screen">
+      <div className="portal-screen__heading portal-screen__heading--split">
+        <div>
+          <h2><Mail size={28} /> Contact CRM</h2>
+          <p>Manage contact submissions, follow-up workflow, assignments, categories, activity, and exports.</p>
+        </div>
+        <div className="crm-header-actions">
+          <button className="button button--outline" type="button" onClick={() => setNewContactOpen((open) => !open)}><Plus size={18} /> New Contact</button>
+          <button className="button button--gold" type="button" onClick={exportContacts}><Download size={18} /> Export CSV</button>
+        </div>
+      </div>
+      <div className="portal-summary-grid contact-crm-kpis">
+        {crmStats.map(([label, value, note, Icon]) => <article key={label}><Icon /><span>{label}</span><strong>{value}</strong><small>{note}</small></article>)}
+      </div>
+      {message ? <p className="form-success">{message}</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
+      {newContactOpen ? (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setNewContactOpen(false)}>
+          <form className="portal-card portal-form contact-create-modal" onSubmit={createContact} onMouseDown={(event) => event.stopPropagation()}>
+            <header><h3><Plus size={19} /> New CRM Contact</h3><button type="button" onClick={() => setNewContactOpen(false)} aria-label="Close new contact"><XCircle size={18} /></button></header>
+            <label>Name<input value={newContact.name} onChange={(event) => updateNewContact("name", event.target.value)} required /></label>
+            <label>Email<input type="email" value={newContact.email} onChange={(event) => updateNewContact("email", event.target.value)} required /></label>
+            <label>Phone<input value={newContact.phone} onChange={(event) => updateNewContact("phone", event.target.value)} /></label>
+            <label>Category<select value={newContact.reason} onChange={(event) => updateNewContact("reason", event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+            <label>Priority<select value={newContact.priority} onChange={(event) => updateNewContact("priority", event.target.value)}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
+            <label className="form-span">Message<textarea value={newContact.message} onChange={(event) => updateNewContact("message", event.target.value)} required /></label>
+            <button className="button button--gold" type="submit"><Save size={18} /> Create Contact</button>
+          </form>
+        </div>
+      ) : null}
+      <div className="contact-crm-layout">
+        <section className="portal-card contact-crm-list">
+          <div className="contact-crm-toolbar">
+            <label><Filter size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, email, phone, category, notes..." /></label>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select>
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>All</option>{categories.map((category) => <option key={category}>{category}</option>)}</select>
+            <button type="button" onClick={loadCrm}><RotateCcw size={16} /> Refresh</button>
+          </div>
+          <div className="contact-crm-bulk">
+            <span>{selectedIds.length} selected</span>
+            <button type="button" onClick={() => bulkUpdate("In Progress")}>Mark In Progress</button>
+            <button type="button" onClick={() => bulkUpdate("Resolved")}>Resolve</button>
+            <button type="button" onClick={() => bulkUpdate("Archived")}>Archive</button>
+          </div>
+          <div className="contact-crm-category">
+            <label>CRM Categories<input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Add new contact category" /></label>
+            <button className="button button--outline" type="button" onClick={addCategory}><Plus size={16} /> Add Category</button>
+          </div>
+          <div className="contact-crm-table">
+            <div className="contact-crm-head"><span></span><span>Contact</span><span>Category</span><span>Status</span><span>Priority</span><span>Assigned</span><span>Follow-Up</span><span>Submitted</span></div>
+            {filteredContacts.map((contact) => (
+              <button type="button" key={contact.id} className={contact.id === selected?.id ? "contact-crm-row is-active" : "contact-crm-row"} onClick={() => setSelectedId(contact.id)} onDoubleClick={() => setViewerOpen(true)}>
+                <span onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(contact.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, contact.id] : current.filter((idValue) => idValue !== contact.id))} /></span>
+                <span><strong>{contact.name || "Anonymous"}</strong><small>{contact.email || "No email"} · {contact.phone || "No phone"}</small></span>
+                <span>{contact.reason || contact.category || "General Contact"}</span>
+                <b>{contact.status || "New"}</b>
+                <i>{contact.priority || "Normal"}</i>
+                <span>{contact.assignedTo || "Unassigned"}</span>
+                <time>{contact.followUpDate || "None"}</time>
+                <time>{contact.submittedAt ? new Date(contact.submittedAt).toLocaleDateString() : ""}</time>
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="contact-crm-side">
+          {selected && draft ? (
+            <>
+              <section className="portal-card contact-profile-card">
+                <h3><User size={19} /> Contact Profile</h3>
+                <div className="inbox-selected-person"><span>{initialsFor(selected.name || selected.email || "AWD")}</span><div><strong>{selected.name || "Anonymous"}</strong><small>{selected.email}</small></div></div>
+                <div className="contact-profile-actions">
+                  <button className="button button--outline" type="button" onClick={() => setViewerOpen(true)}><Eye size={17} /> View Contact</button>
+                  <button className="button button--danger" type="button" onClick={removeSelectedContact}><XCircle size={17} /> Remove</button>
+                </div>
+                <div className="portal-form contact-profile-form">
+                  <label>Status<select value={draft.status} onChange={(event) => updateDraft("status", event.target.value)}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+                  <label>Priority<select value={draft.priority} onChange={(event) => updateDraft("priority", event.target.value)}>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
+                  <label>Assigned To<input value={draft.assignedTo} onChange={(event) => updateDraft("assignedTo", event.target.value)} /></label>
+                  <label>Follow-Up<input type="date" value={draft.followUpDate} onChange={(event) => updateDraft("followUpDate", event.target.value)} /></label>
+                  <label>Category<select value={draft.reason} onChange={(event) => updateDraft("reason", event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+                  <label>Phone<input value={draft.phone} onChange={(event) => updateDraft("phone", event.target.value)} /></label>
+                  <label className="form-span">Message<textarea value={draft.message} onChange={(event) => updateDraft("message", event.target.value)} /></label>
+                  <label className="form-span">Internal Notes<textarea value={draft.notes} onChange={(event) => updateDraft("notes", event.target.value)} /></label>
+                </div>
+                <button className="button button--gold" type="button" onClick={saveSelectedContact}><Save size={18} /> Save CRM Record</button>
+              </section>
+              <section className="portal-card contact-activity-card">
+                <h3><History size={19} /> Activity Timeline</h3>
+                <div className="contact-note-composer">
+                  <textarea value={activityNote} onChange={(event) => setActivityNote(event.target.value)} placeholder="Log call, email, visit, or follow-up note..." />
+                  <button className="button button--outline" type="button" onClick={addActivity}><Send size={16} /> Log Interaction</button>
+                </div>
+                <ul className="portal-activity-list">
+                  {(draft.activity || []).map((activity, index) => <li key={`${activity.createdAt}-${index}`}><span>{activity.note}</span><small>{activity.actor} · {new Date(activity.createdAt).toLocaleString()}</small></li>)}
+                  {!(draft.activity || []).length ? <li><span>No interaction history yet.</span><small>Add the first CRM note above.</small></li> : null}
+                </ul>
+              </section>
+            </>
+          ) : <section className="portal-card"><p>No contact selected.</p></section>}
+        </aside>
+      </div>
+      {viewerOpen && selected ? (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setViewerOpen(false)}>
+          <section className="portal-card contact-viewer-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <header><h3><Eye size={19} /> Contact Viewer</h3><button type="button" onClick={() => setViewerOpen(false)} aria-label="Close contact viewer"><XCircle size={18} /></button></header>
+            <div className="contact-viewer-identity"><span>{initialsFor(selected.name || selected.email || "AWD")}</span><div><h2>{selected.name || "Anonymous"}</h2><p>{selected.reason || selected.category || "General Contact"}</p></div></div>
+            <dl>
+              <div><dt>Email</dt><dd>{selected.email || "No email"}</dd></div>
+              <div><dt>Phone</dt><dd>{selected.phone || "No phone"}</dd></div>
+              <div><dt>Status</dt><dd>{selected.status || "New"}</dd></div>
+              <div><dt>Priority</dt><dd>{selected.priority || "Normal"}</dd></div>
+              <div><dt>Assigned To</dt><dd>{selected.assignedTo || "Unassigned"}</dd></div>
+              <div><dt>Follow-Up</dt><dd>{selected.followUpDate || "None"}</dd></div>
+            </dl>
+            <article><h4>Message</h4><p>{selected.message || "No message."}</p></article>
+            <article><h4>Internal Notes</h4><p>{selected.notes || "No notes yet."}</p></article>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function InboxModule({ moduleKey }) {
+  const config = inboxModuleConfig[moduleKey];
+  const Icon = config.icon;
+  const [items, setItems] = useState([]);
+  const [statuses, setStatuses] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const loadItems = useCallback(async () => {
+    const result = await apiRequest(config.route);
+    setItems(result.items || []);
+    setStatuses(result.statuses || []);
+    setSelectedId((current) => current || result.items?.[0]?.id || "");
+  }, [config.route]);
+
+  useEffect(() => {
+    setSelectedId("");
+    setDraft(null);
+    loadItems().catch((loadError) => setError(loadError.message));
+  }, [moduleKey, loadItems]);
+
+  useEffect(() => {
+    const selected = items.find((item) => item.id === selectedId);
+    setDraft(selected ? {
+      status: selected.status || statuses[0] || "",
+      assignedTo: selected.assignedTo || "",
+      priority: selected.priority || "Normal",
+      followUpDate: selected.followUpDate || "",
+      notes: selected.notes || selected.internalNotes || "",
+      confidential: Boolean(selected.confidential),
+      displayOnSite: Boolean(selected.displayOnSite),
+      featured: Boolean(selected.featured),
+    } : null);
+  }, [items, selectedId, statuses]);
+
+  const filteredItems = items.filter((item) => {
+    const haystack = [
+      firstValue(item, config.fields.name),
+      firstValue(item, config.fields.email),
+      firstValue(item, config.fields.subject),
+      firstValue(item, config.fields.body),
+      item.status,
+      item.priority,
+    ].join(" ").toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+  const selected = items.find((item) => item.id === selectedId) || filteredItems[0];
+  const statusCounts = statuses.slice(0, 5).map((status) => [status, items.filter((item) => item.status === status).length]);
+
+  const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+
+  const saveRecord = async () => {
+    if (!selected || !draft) return;
+    setError("");
+    setMessage("");
+    try {
+      const body = { ...draft, internalNotes: draft.notes };
+      const result = await apiRequest(`${config.route}/${selected.id}`, { method: "PATCH", body });
+      setItems((current) => current.map((item) => (item.id === selected.id ? result.item : item)));
+      setMessage("Inbox record saved.");
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  };
+
+  const exportRows = () => {
+    downloadCsv(`${moduleKey}-export.csv`, [
+      ["Name", "Email", "Subject", "Status", "Priority", "Submitted", "Assigned To", "Follow Up"],
+      ...filteredItems.map((item) => [
+        firstValue(item, config.fields.name),
+        firstValue(item, config.fields.email),
+        firstValue(item, config.fields.subject),
+        item.status,
+        item.priority,
+        item.submittedAt,
+        item.assignedTo,
+        item.followUpDate,
+      ]),
+    ]);
+  };
+
+  return (
+    <section className="portal-screen inbox-screen">
+      <div className="portal-screen__heading portal-screen__heading--split">
+        <div>
+          <h2><Icon size={28} /> {config.title}</h2>
+          <p>{config.summary}</p>
+        </div>
+        <button className="button button--gold" type="button" onClick={exportRows}><Download size={18} /> Export CSV</button>
+      </div>
+      <div className="portal-summary-grid inbox-kpis">
+        <article><Icon /><span>Total</span><strong>{items.length}</strong><small>All records</small></article>
+        {statusCounts.map(([status, count]) => <article key={status}><CheckCircle2 /><span>{status}</span><strong>{count}</strong><small>Current queue</small></article>)}
+      </div>
+      {message ? <p className="form-success">{message}</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
+      <div className="inbox-layout">
+        <section className="portal-card inbox-list-card">
+          <div className="staff-toolbar">
+            <label><Filter size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={config.searchPlaceholder} /></label>
+            <button type="button" onClick={loadItems}><RotateCcw size={16} /> Refresh</button>
+          </div>
+          <div className="inbox-list">
+            {filteredItems.map((item) => (
+              <button type="button" key={item.id} className={item.id === selected?.id ? "is-active" : ""} onClick={() => setSelectedId(item.id)}>
+                <span><strong>{firstValue(item, config.fields.name, "Anonymous")}</strong><small>{firstValue(item, config.fields.email, "No email")}</small></span>
+                <span>{firstValue(item, config.fields.subject, "General")}</span>
+                <b>{item.status || "New"}</b>
+                <time>{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : ""}</time>
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="portal-card inbox-detail-card">
+          {selected && draft ? (
+            <>
+              <h3><Icon size={19} /> Record Details</h3>
+              <div className="inbox-selected-person">
+                <span>{initialsFor(firstValue(selected, config.fields.name, "AWD"))}</span>
+                <div><strong>{firstValue(selected, config.fields.name, "Anonymous")}</strong><small>{firstValue(selected, config.fields.email, "No email provided")}</small></div>
+              </div>
+              {moduleKey === "testimonials" ? (
+                <article className="inbox-testimonial-story">
+                  <h4>Testimonial</h4>
+                  <blockquote>{testimonialText(selected)}</blockquote>
+                  <dl>
+                    <div><dt>Ministry</dt><dd>{selected.ministry || "All Walls Down"}</dd></div>
+                    <div><dt>City</dt><dd>{selected.city || "Not provided"}</dd></div>
+                    <div><dt>Display On Site</dt><dd>{selected.displayOnSite ? "Yes" : "No"}</dd></div>
+                    <div><dt>Featured</dt><dd>{selected.featured ? "Yes" : "No"}</dd></div>
+                  </dl>
+                </article>
+              ) : (
+                <p>{firstValue(selected, config.fields.body, "No message provided.")}</p>
+              )}
+              <div className="portal-form inbox-detail-form">
+                <label>Status<select value={draft.status} onChange={(event) => updateDraft("status", event.target.value)}>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+                <label>Priority<select value={draft.priority} onChange={(event) => updateDraft("priority", event.target.value)}><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select></label>
+                <label>Assigned To<input value={draft.assignedTo} onChange={(event) => updateDraft("assignedTo", event.target.value)} placeholder="Assign staff member" /></label>
+                <label>Follow-Up Date<input type="date" value={draft.followUpDate} onChange={(event) => updateDraft("followUpDate", event.target.value)} /></label>
+                <label className="form-span">Internal Notes<textarea value={draft.notes} onChange={(event) => updateDraft("notes", event.target.value)} /></label>
+                {moduleKey === "prayer" ? <label className="portal-check form-span"><input type="checkbox" checked={draft.confidential} onChange={(event) => updateDraft("confidential", event.target.checked)} /> Confidential prayer request</label> : null}
+                {moduleKey === "testimonials" ? (
+                  <>
+                    <label className="portal-check"><input type="checkbox" checked={draft.displayOnSite} onChange={(event) => updateDraft("displayOnSite", event.target.checked)} /> Display on site</label>
+                    <label className="portal-check"><input type="checkbox" checked={draft.featured} onChange={(event) => updateDraft("featured", event.target.checked)} /> Featured story</label>
+                  </>
+                ) : null}
+              </div>
+              <button className="button button--gold" type="button" onClick={saveRecord}><Save size={18} /> Save Record</button>
+            </>
+          ) : <p>No records found.</p>}
         </aside>
       </div>
     </section>
@@ -958,11 +1681,12 @@ export default function PortalApp() {
         <Route path="/dashboard" element={summary ? <Dashboard summary={summary} /> : <LoadingPanel />} />
         <Route path="/staff" element={<StaffManagement />} />
         <Route path="/security" element={<SecurityScreen user={auth.user} refreshUser={refreshUser} />} />
-        <Route path="/profile" element={<ProfileScreen user={auth.user} onLogoutAll={logoutAll} />} />
+        <Route path="/profile" element={<ProfileScreen user={auth.user} onLogoutAll={logoutAll} refreshUser={refreshUser} />} />
+        <Route path="/contacts" element={<ContactCrm />} />
         <Route path="/content" element={<PortalModulePlaceholder title="Content Management" body="Manage All Walls Down website content, media, publishing, and page updates." icon={FileText} />} />
         <Route path="/donations" element={<PortalModulePlaceholder title="Donations" body="Review provider-hosted donation activity and donation follow-up workflows." icon={Heart} />} />
-        <Route path="/prayer-requests" element={<PortalModulePlaceholder title="Prayer Requests" body="Manage submitted prayer requests, confidentiality, follow-up, and team response." icon={Shield} />} />
-        <Route path="/testimonials" element={<PortalModulePlaceholder title="Testimonials" body="Review, approve, and publish community stories of transformation." icon={MessageSquareQuote} />} />
+        <Route path="/prayer-requests" element={<InboxModule moduleKey="prayer" />} />
+        <Route path="/testimonials" element={<InboxModule moduleKey="testimonials" />} />
         <Route path="/settings" element={<PortalModulePlaceholder title="Settings" body="Manage portal preferences, email delivery, integrations, and audit access." icon={Settings} />} />
         <Route path="/access-denied" element={<AccessDenied />} />
         <Route

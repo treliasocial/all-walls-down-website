@@ -595,10 +595,14 @@ function shouldShowOnLeadership(user) {
 
 function createSeededLeadershipUser(seed) {
   const roles = [seed.role || "Ministry Staff"];
+  const staffKey = String(seed.email || seed.id || seed.name || "staff")
+    .replace("@", "-")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .toLowerCase();
   return {
-    id: `staff-${seed.email.split("@")[0].replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+    id: seed.id || `staff-${staffKey}`,
     name: seed.name,
-    email: seed.email,
+    email: seed.email || "",
     role: roles[0],
     roles,
     isActive: true,
@@ -1171,10 +1175,7 @@ function PageHero({ label, title, body, image, imageClass = "" }) {
 }
 
 function TestimonialsSection() {
-  const [testimonials, setTestimonials] = useStoredCollection(
-    storageKeys.testimonials,
-    sampleTestimonials,
-  );
+  const [testimonials, setTestimonials] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -1184,10 +1185,15 @@ function TestimonialsSection() {
     quote: "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const displayTestimonials = testimonials.filter(
-    (testimonial) =>
-      testimonial.status === "Approved" && testimonial.displayOnSite,
-  );
+  const [testimonialsLoaded, setTestimonialsLoaded] = useState(false);
+  const displayTestimonials = testimonials;
+
+  useEffect(() => {
+    apiRequest("/api/public/testimonials")
+      .then((result) => setTestimonials(Array.isArray(result.testimonials) ? result.testimonials : []))
+      .catch(() => setTestimonials([]))
+      .finally(() => setTestimonialsLoaded(true));
+  }, []);
 
   const updateForm = (event) => {
     const { name, value } = event.target;
@@ -1207,7 +1213,6 @@ function TestimonialsSection() {
       notes: "",
     };
     await apiRequest("/api/public/testimonial", { method: "POST", body: nextTestimonial });
-    setTestimonials((current) => [nextTestimonial, ...current]);
     setForm({
       name: "",
       email: "",
@@ -1246,6 +1251,21 @@ function TestimonialsSection() {
           ) : null}
         </div>
         <div className="testimonial-list" aria-label="Approved testimonials">
+          {testimonialsLoaded && !displayTestimonials.length ? (
+            <article className="testimonial-bubble testimonial-bubble--empty">
+              <span className="testimonial-bubble__icon">
+                <MessageSquareQuote aria-hidden="true" />
+              </span>
+              <blockquote>Approved testimonials will appear here after review.</blockquote>
+              <div className="testimonial-bubble__person">
+                <span aria-hidden="true">A</span>
+                <div>
+                  <strong>All Walls Down</strong>
+                  <small>Ministry team</small>
+                </div>
+              </div>
+            </article>
+          ) : null}
           {displayTestimonials.map((testimonial, index) => (
             <article
               key={testimonial.id}
